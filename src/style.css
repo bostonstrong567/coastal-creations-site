@@ -83,10 +83,10 @@ a {
 .brand-banner img {
   display: block;
   width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
-  height: clamp(10rem, 22vw, 20rem);
-  object-fit: contain;
+  max-width: 100%;
+  margin: 0;
+  height: clamp(8rem, 14vw, 14rem);
+  object-fit: cover;
   object-position: center;
 }
 
@@ -918,7 +918,8 @@ textarea {
 
 @media (max-width: 640px) {
   .brand-banner img {
-    height: 9rem;
+    height: 6rem;
+    object-fit: cover;
   }
 
   nav {
