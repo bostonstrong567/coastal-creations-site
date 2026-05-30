@@ -100,7 +100,7 @@ a {
   width: auto;
   max-width: 100%;
   margin: 0 auto;
-  height: clamp(8rem, 16vw, 15rem);
+  height: clamp(4rem, 6vw, 6rem);
   object-fit: contain;
   object-position: center;
 }
@@ -933,8 +933,8 @@ textarea {
 
 @media (max-width: 640px) {
   .brand-banner img {
-    height: auto;
-    object-fit: fill;
+    height: 3.5rem;
+    object-fit: contain;
   }
 
   nav {
