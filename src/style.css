@@ -321,7 +321,7 @@ p {
   min-height: 21rem;
   display: grid;
   place-items: center;
-  background: #f8f2e8;
+  background-color: #f8f2e8;
 }
 
 .inventory-image {
