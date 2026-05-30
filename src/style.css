@@ -85,7 +85,7 @@ a {
   width: 100%;
   max-width: 100%;
   margin: 0;
-  height: clamp(8rem, 14vw, 14rem);
+  height: clamp(12rem, 24vw, 22rem);
   object-fit: cover;
   object-position: center;
 }
@@ -918,7 +918,7 @@ textarea {
 
 @media (max-width: 640px) {
   .brand-banner img {
-    height: 6rem;
+    height: 13rem;
     object-fit: cover;
   }
 
