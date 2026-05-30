@@ -194,7 +194,7 @@ function render() {
 
   document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <header class="site-header">
-      <a class="brand-banner" href="#top" aria-label="Mary Jean's Coastal Creations home">
+      <a class="brand-banner" href="#top" aria-label="Mary Jean's Coastal Creations home" style="--banner-bg: url('${bannerLogoUrl}')">
         <img src="${bannerLogoUrl}" alt="Mary Jean's Coastal Creations" />
       </a>
       <div class="nav-row">
