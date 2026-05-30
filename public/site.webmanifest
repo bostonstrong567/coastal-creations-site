@@ -1,0 +1,13 @@
+{
+  "name": "Mary Jean's Coastal Creations",
+  "short_name": "Coastal Creations",
+  "description": "Handcrafted wind chimes, sea-glass earrings, and one-of-a-kind coastal keepsakes — designed by the sea.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fffdf8",
+  "theme_color": "#0f4e5c",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
