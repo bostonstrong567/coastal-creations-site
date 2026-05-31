@@ -7,6 +7,8 @@ const chimeApi = '/chime-api'
 const adminUsername = 'mjbussey'
 const adminPasswordHash = '160816406f40159d0c1a6aeb1cdf51e4ee1552ec0451f960c57f1826aa3b6139'
 const adminSessionKey = 'mjcc-admin-authenticated'
+const listingStorageKey = 'mjcc-listing-edits-v1'
+const storefrontStorageKey = 'mjcc-storefront-window-v1'
 
 type ListingStatus = 'Available' | 'Sold' | 'Hidden' | 'Draft'
 type AdminTab = 'storefront' | 'add' | 'listings' | 'orders' | 'requests' | 'messages'
@@ -70,6 +72,11 @@ type StorefrontTile = {
   media: 'photo' | 'video'
   imageClass: string
   imageUrl?: string
+}
+
+type StoredProductEdit = Partial<Omit<Product, 'price'>> & {
+  id: number
+  price?: number | null
 }
 
 const shellVision = {
@@ -247,6 +254,7 @@ const storefrontTiles: StorefrontTile[] = [
     imageClass: 'quad ornaments',
   },
 ]
+loadStoredStorefrontTiles()
 
 const categories = [
   { label: 'Wind Chimes', slug: 'wind-chimes', category: 'Wind Chimes' },
@@ -267,6 +275,7 @@ products.forEach((product) => {
     ? `${product.title} handmade with beach-found shell details and coastal accents.`
     : `${product.title} handmade by Mary Jean with coastal materials.`
 })
+loadStoredListingEdits()
 
 const sampleOrders: AdminOrder[] = [
   {
@@ -1077,6 +1086,7 @@ function attachEvents() {
       const status = button.dataset.status as ListingStatus
       if (listing && status) {
         listing.status = status
+        saveListingEdits()
         adminNotice = `${listing.title} is now ${status}.`
         render()
       }
@@ -1094,6 +1104,7 @@ function attachEvents() {
       tile.title = String(formData.get('title') ?? tile.title).trim() || tile.title
       tile.media = String(formData.get('media') ?? tile.media) === 'video' ? 'video' : 'photo'
       tile.imageUrl = imageUrl || undefined
+      saveStorefrontTiles()
       adminNotice = `${tile.title} storefront card was saved for this preview.`
       render()
     })
@@ -1121,6 +1132,7 @@ function attachEvents() {
       listing.priceLabel = 'Price TBD'
     }
 
+    saveListingEdits()
     editingListingId = null
     adminNotice = `${listing.title} was saved.`
     render()
@@ -1198,6 +1210,67 @@ async function sha256(value: string) {
   return Array.from(new Uint8Array(hash))
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('')
+}
+
+function loadStoredListingEdits() {
+  try {
+    const raw = localStorage.getItem(listingStorageKey)
+    if (!raw) return
+
+    const edits = JSON.parse(raw) as StoredProductEdit[]
+    edits.forEach((edit) => {
+      if (typeof edit.id !== 'number') return
+      const product = products.find((item) => item.id === edit.id)
+      if (!product) return
+
+      if (typeof edit.title === 'string') product.title = edit.title
+      if (typeof edit.category === 'string') product.category = edit.category
+      if (typeof edit.price === 'number') product.price = edit.price
+      if (edit.price === null) product.price = undefined
+      if (typeof edit.priceLabel === 'string') product.priceLabel = edit.priceLabel
+      if (typeof edit.description === 'string') product.description = edit.description
+      if (typeof edit.status === 'string') product.status = edit.status as ListingStatus
+    })
+  } catch {
+    localStorage.removeItem(listingStorageKey)
+  }
+}
+
+function saveListingEdits() {
+  const edits = products.map((product) => ({
+    id: product.id,
+    title: product.title,
+    category: product.category,
+    price: product.price ?? null,
+    priceLabel: product.priceLabel,
+    description: product.description,
+    status: product.status,
+  }))
+  localStorage.setItem(listingStorageKey, JSON.stringify(edits))
+}
+
+function loadStoredStorefrontTiles() {
+  try {
+    const raw = localStorage.getItem(storefrontStorageKey)
+    if (!raw) return
+
+    const edits = JSON.parse(raw) as Partial<StorefrontTile>[]
+    edits.forEach((edit) => {
+      if (typeof edit.id !== 'number') return
+      const tile = storefrontTiles.find((item) => item.id === edit.id)
+      if (!tile) return
+
+      if (typeof edit.title === 'string') tile.title = edit.title
+      if (edit.media === 'photo' || edit.media === 'video') tile.media = edit.media
+      if (typeof edit.imageUrl === 'string') tile.imageUrl = edit.imageUrl || undefined
+    })
+  } catch {
+    localStorage.removeItem(storefrontStorageKey)
+  }
+}
+
+function saveStorefrontTiles() {
+  localStorage.setItem(storefrontStorageKey, JSON.stringify(storefrontTiles))
 }
 
 async function loadChimes() {
