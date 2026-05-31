@@ -359,9 +359,43 @@ p {
   pointer-events: none;
 }
 
+.product-gallery-video {
+  background: #102f36;
+}
+
 .product-card.has-hover-video:hover .product-hover-video,
 .product-card.has-hover-video:focus-within .product-hover-video {
   opacity: 1;
+}
+
+.gallery-arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  min-height: 0;
+  padding: 0;
+  color: white;
+  background: rgba(7, 56, 66, 0.86);
+  border: 1px solid rgba(255, 253, 248, 0.7);
+  border-radius: 999px;
+  box-shadow: 0 8px 20px rgba(18, 55, 63, 0.24);
+  transform: translateY(-50%);
+}
+
+.gallery-arrow:hover {
+  background: var(--teal);
+}
+
+.gallery-prev {
+  left: 0.7rem;
+}
+
+.gallery-next {
+  right: 0.7rem;
 }
 
 .category-rail {
@@ -1146,6 +1180,72 @@ textarea {
   display: block;
   margin-top: 0.2rem;
   color: var(--driftwood);
+}
+
+.drop-zone {
+  display: grid;
+  place-items: center;
+  min-height: 8rem;
+  padding: 1rem;
+  color: var(--teal-dark);
+  background: rgba(255, 253, 248, 0.76);
+  border: 2px dashed rgba(15, 78, 92, 0.36);
+  border-radius: 8px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.drop-zone.drag-over {
+  background: rgba(23, 127, 145, 0.16);
+  border-color: var(--teal);
+}
+
+.drop-zone input {
+  max-width: 18rem;
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.media-preview-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.media-preview-grid figure {
+  margin: 0;
+  overflow: hidden;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.media-preview-grid img,
+.media-preview-grid video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  background: #f8f2e8;
+}
+
+.media-preview-grid figcaption,
+.upload-status {
+  display: block;
+  padding: 0.55rem;
+  color: var(--teal-dark);
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.upload-status {
+  grid-column: 1 / -1;
+  background: rgba(159, 200, 193, 0.16);
+  border: 1px solid var(--line);
+  border-radius: 6px;
 }
 
 .admin-actions {

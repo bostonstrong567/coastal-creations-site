@@ -15,9 +15,20 @@ interface D1Database {
   prepare(query: string): D1PreparedStatement;
 }
 
+interface R2ObjectBody {
+  body: ReadableStream;
+  httpMetadata?: { contentType?: string };
+}
+
+interface R2Bucket {
+  put(key: string, value: ArrayBuffer | ReadableStream, options?: { httpMetadata?: { contentType?: string } }): Promise<unknown>;
+  get(key: string): Promise<R2ObjectBody | null>;
+}
+
 interface Env {
   ASSETS: { fetch: (req: Request) => Promise<Response> };
   DB?: D1Database;
+  MEDIA_BUCKET?: R2Bucket;
 }
 
 type ListingInput = {
@@ -31,6 +42,7 @@ type ListingInput = {
   imageClass?: string;
   imageUrl?: string;
   videoUrl?: string;
+  galleryUrls?: string[];
   description?: string;
   status?: string;
 };
@@ -120,6 +132,14 @@ async function proxyChimeApi(request: Request, url: URL) {
 }
 
 async function handleApi(request: Request, env: Env, url: URL) {
+  if (url.pathname === '/api/uploads' && request.method === 'POST') {
+    return uploadMediaFiles(request, env, url);
+  }
+
+  if (url.pathname.startsWith('/api/uploads/') && request.method === 'GET') {
+    return serveUploadedMedia(env, url);
+  }
+
   if (!env.DB) {
     return databaseNotConfigured(request, url);
   }
@@ -137,8 +157,8 @@ async function handleApi(request: Request, env: Env, url: URL) {
     if (url.pathname === '/api/listings' && request.method === 'PUT') {
       const listing = sanitizeListing(await request.json());
       await env.DB.prepare(`
-        INSERT INTO listings (id, title, category, price, price_label, tag, media, image_class, image_url, video_url, description, status, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        INSERT INTO listings (id, title, category, price, price_label, tag, media, image_class, image_url, video_url, gallery_urls, description, status, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(id) DO UPDATE SET
           title = excluded.title,
           category = excluded.category,
@@ -149,6 +169,7 @@ async function handleApi(request: Request, env: Env, url: URL) {
           image_class = excluded.image_class,
           image_url = excluded.image_url,
           video_url = excluded.video_url,
+          gallery_urls = excluded.gallery_urls,
           description = excluded.description,
           status = excluded.status,
           updated_at = CURRENT_TIMESTAMP
@@ -163,6 +184,7 @@ async function handleApi(request: Request, env: Env, url: URL) {
         listing.imageClass ?? '',
         listing.imageUrl ?? null,
         listing.videoUrl ?? null,
+        JSON.stringify(listing.galleryUrls ?? []),
         listing.description ?? null,
         listing.status ?? 'Available',
       ).run();
@@ -259,6 +281,86 @@ async function databaseNotConfigured(request: Request, url: URL) {
   return json({ ok: false, database: false, error: 'not found' }, 404);
 }
 
+async function uploadMediaFiles(request: Request, env: Env, url: URL) {
+  const form = await request.formData();
+  const files = form.getAll('files').filter((item): item is File => item instanceof File);
+  const ownerType = String(form.get('ownerType') ?? 'listing');
+  const ownerId = String(form.get('ownerId') ?? 'unknown');
+
+  if (!files.length) {
+    return json({ ok: false, error: 'no files selected', files: [] }, 400);
+  }
+
+  if (!env.MEDIA_BUCKET) {
+    return json({
+      ok: false,
+      storage: false,
+      error: 'media storage not configured',
+      files: files.map((file) => ({
+        fileName: file.name,
+        fileType: file.type || 'application/octet-stream',
+        fileSize: file.size,
+      })),
+    });
+  }
+
+  const uploaded = [];
+  for (const file of files.slice(0, 8)) {
+    if (!isAllowedMedia(file)) {
+      uploaded.push({ ok: false, fileName: file.name, error: 'unsupported file type or too large' });
+      continue;
+    }
+
+    const key = `${ownerType}/${ownerId}/${Date.now()}-${crypto.randomUUID()}-${safeFileName(file.name)}`;
+    await env.MEDIA_BUCKET.put(key, await file.arrayBuffer(), {
+      httpMetadata: { contentType: file.type || 'application/octet-stream' },
+    });
+
+    uploaded.push({
+      ok: true,
+      key,
+      url: `${url.origin}/api/uploads/${encodeURIComponent(key)}`,
+      fileName: file.name,
+      fileType: file.type || 'application/octet-stream',
+      fileSize: file.size,
+    });
+  }
+
+  return json({ ok: true, storage: true, files: uploaded });
+}
+
+async function serveUploadedMedia(env: Env, url: URL) {
+  if (!env.MEDIA_BUCKET) {
+    return json({ ok: false, storage: false, error: 'media storage not configured' }, 404);
+  }
+
+  const key = decodeURIComponent(url.pathname.replace('/api/uploads/', ''));
+  if (!key || key.includes('..')) {
+    return json({ ok: false, error: 'invalid media key' }, 400);
+  }
+
+  const object = await env.MEDIA_BUCKET.get(key);
+  if (!object) {
+    return json({ ok: false, error: 'media not found' }, 404);
+  }
+
+  return new Response(object.body, {
+    headers: {
+      'content-type': object.httpMetadata?.contentType ?? 'application/octet-stream',
+      'cache-control': 'public, max-age=31536000, immutable',
+    },
+  });
+}
+
+function isAllowedMedia(file: File) {
+  const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/webm', 'video/quicktime'];
+  return allowed.includes(file.type) && file.size <= 50 * 1024 * 1024;
+}
+
+function safeFileName(fileName: string) {
+  return fileName.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'upload';
+}
+
 function sanitizeListing(input: unknown): ListingInput {
   const value = input as Partial<ListingInput>;
   if (!Number.isFinite(value.id)) throw new Error('listing id is required');
@@ -275,6 +377,7 @@ function sanitizeListing(input: unknown): ListingInput {
     imageClass: value.imageClass?.trim(),
     imageUrl: value.imageUrl?.trim(),
     videoUrl: value.videoUrl?.trim(),
+    galleryUrls: Array.isArray(value.galleryUrls) ? value.galleryUrls.filter((url): url is string => typeof url === 'string' && Boolean(url.trim())) : [],
     description: value.description?.trim(),
     status: value.status?.trim() || 'Available',
   };
@@ -338,6 +441,7 @@ function mapListingRow(row: Record<string, unknown>) {
     imageClass: row.image_class,
     imageUrl: row.image_url,
     videoUrl: row.video_url,
+    galleryUrls: parseJsonArray(row.gallery_urls),
     description: row.description,
     status: row.status,
   };
@@ -351,6 +455,16 @@ function mapStorefrontRow(row: Record<string, unknown>) {
     imageClass: row.image_class,
     imageUrl: row.image_url,
   };
+}
+
+function parseJsonArray(value: unknown) {
+  if (typeof value !== 'string') return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 function json(data: unknown, status = 200) {

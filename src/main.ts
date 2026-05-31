@@ -25,6 +25,7 @@ type Product = {
   imageClass: string
   imageUrl?: string
   videoUrl?: string
+  galleryUrls?: string[]
   description?: string
   status?: ListingStatus
 }
@@ -271,6 +272,7 @@ let adminTab: AdminTab = 'storefront'
 let editingListingId: number | null = null
 let adminNotice = ''
 let backendStateLoaded = false
+const productMediaIndex = new Map<number, number>()
 
 products.forEach((product) => {
   product.status ??= 'Available'
@@ -754,6 +756,7 @@ function adminListingsMarkup() {
 function adminEditListingMarkup(listing: Product) {
   const imageUrl = listing.imageUrl ?? ''
   const videoUrl = listing.videoUrl ?? ''
+  const galleryUrls = listing.galleryUrls?.join('\n') ?? ''
   return `
     <div class="admin-panel">
       <div class="admin-panel-head">
@@ -779,13 +782,17 @@ function adminEditListingMarkup(listing: Product) {
           </div>
         </div>
         <label class="admin-description">Description<textarea name="description">${escapeHtml(listing.description ?? '')}</textarea></label>
+        <label class="admin-description">Extra gallery photo/video URLs<textarea name="galleryUrls" placeholder="One photo or video URL per line">${escapeHtml(galleryUrls)}</textarea></label>
         <div class="admin-upload">
           <div>
-            <strong>Upload photos or videos</strong>
-            <span>Pick files for preview and database media records. Permanent video hosting needs Cloudflare R2 next.</span>
+            <strong>Drag photos or videos here</strong>
+            <span>Drop files or tap to choose. Photos become the main image; videos become the hover video when storage is connected.</span>
           </div>
-          <input type="file" multiple accept="image/*,video/*" data-upload-preview data-listing-media-upload="${listing.id}" />
-          <div class="upload-preview" data-preview-target></div>
+          <label class="drop-zone" data-drop-zone>
+            <input type="file" multiple accept="image/*,video/*" data-upload-preview data-listing-media-upload="${listing.id}" />
+            <span>Drop files here or choose from your device</span>
+          </label>
+          <div class="upload-preview media-preview-grid" data-preview-target></div>
         </div>
         <div class="admin-actions">
           <button type="button" data-admin-cancel-edit>Cancel</button>
@@ -864,20 +871,39 @@ function adminMessagesMarkup() {
 }
 
 function productCard(product: Product) {
-  const realInventoryImage = product.imageUrl
-    ? `<img class="inventory-image" src="${product.imageUrl}" alt="${product.title}" />`
+  const mediaItems = productMediaItems(product)
+  const activeIndex = Math.min(productMediaIndex.get(product.id) ?? 0, Math.max(mediaItems.length - 1, 0))
+  const activeMedia = mediaItems[activeIndex]
+  const realInventoryImage = activeMedia
+    ? activeMedia.type === 'video'
+      ? `<video class="inventory-image product-gallery-video" src="${activeMedia.url}" muted loop playsinline preload="metadata" aria-label="${escapeHtml(product.title)} video"></video>`
+      : `<img class="inventory-image" src="${activeMedia.url}" alt="${escapeHtml(product.title)}" />`
     : ''
-  const hoverVideo = product.videoUrl
-    ? `<video class="product-hover-video" src="${product.videoUrl}" muted loop playsinline preload="metadata" aria-label="${escapeHtml(product.title)} video"></video>`
+  const hoverVideo = product.videoUrl && activeIndex === 0
+    ? `<video class="product-hover-video" src="${product.videoUrl}" muted loop playsinline preload="metadata" aria-label="${escapeHtml(product.title)} hover video"></video>`
     : ''
-  const imageStyle = product.imageUrl ? '' : ` style="--product-img: url('${productGridUrl}')"`
+  const carouselControls = mediaItems.length > 1
+    ? `
+      <button type="button" class="gallery-arrow gallery-prev" data-product-gallery="${product.id}" data-gallery-step="-1" aria-label="Previous media for ${escapeHtml(product.title)}">‹</button>
+      <button type="button" class="gallery-arrow gallery-next" data-product-gallery="${product.id}" data-gallery-step="1" aria-label="Next media for ${escapeHtml(product.title)}">›</button>
+    `
+    : ''
+  const imageStyle = activeMedia ? '' : ` style="--product-img: url('${productGridUrl}')"`
+  const badge = activeMedia
+    ? activeMedia.type === 'video'
+      ? '<span>Video</span>'
+      : mediaItems.length > 1
+        ? '<span>Gallery</span>'
+        : ''
+    : `<span>${product.media === 'video' ? 'Video + photos' : 'Photos'}</span>`
 
   return `
     <article class="product-card ${product.videoUrl ? 'has-hover-video' : ''}">
       <div class="product-photo ${product.imageClass}"${imageStyle}>
         ${realInventoryImage}
         ${hoverVideo}
-        ${product.imageUrl ? (product.videoUrl ? '<span>Video</span>' : '') : `<span>${product.media === 'video' ? 'Video + photos' : 'Photos'}</span>`}
+        ${carouselControls}
+        ${badge}
       </div>
       <div class="product-info">
         <div>
@@ -890,6 +916,24 @@ function productCard(product: Product) {
       <button data-add-cart="${product.id}">${product.price ? 'Add to Cart' : 'Request Item'}</button>
     </article>
   `
+}
+
+function productMediaItems(product: Product) {
+  const urls = [
+    product.imageUrl,
+    product.videoUrl,
+    ...(product.galleryUrls ?? []),
+  ].filter((url): url is string => Boolean(url))
+  const uniqueUrls = Array.from(new Set(urls))
+
+  return uniqueUrls.map((url) => ({
+    url,
+    type: isVideoUrl(url) ? 'video' : 'image',
+  }))
+}
+
+function isVideoUrl(url: string) {
+  return /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(url)
 }
 
 function shellVisionMarkup(isPage = false) {
@@ -1055,12 +1099,29 @@ function attachEvents() {
 
   document.querySelectorAll<HTMLInputElement>('[data-upload-preview]').forEach((input) => {
     input.addEventListener('change', () => {
-      const target = input.closest('form')?.querySelector('[data-preview-target]')
-      if (!target || !input.files?.length) return
-      target.innerHTML = Array.from(input.files)
-        .slice(0, 4)
-        .map((file) => `<span>${file.type.startsWith('video') ? 'Video' : 'Photo'}: ${file.name}</span>`)
-        .join('')
+      void handleUploadPreview(input)
+    })
+  })
+
+  document.querySelectorAll<HTMLElement>('[data-drop-zone]').forEach((dropZone) => {
+    const input = dropZone.querySelector<HTMLInputElement>('input[type="file"]')
+    if (!input) return
+
+    dropZone.addEventListener('dragover', (event) => {
+      event.preventDefault()
+      dropZone.classList.add('drag-over')
+    })
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('drag-over')
+    })
+
+    dropZone.addEventListener('drop', (event) => {
+      event.preventDefault()
+      dropZone.classList.remove('drag-over')
+      if (!event.dataTransfer?.files.length) return
+      input.files = event.dataTransfer.files
+      void handleUploadPreview(input)
     })
   })
 
@@ -1081,6 +1142,22 @@ function attachEvents() {
     card.addEventListener('focusin', playVideo)
     card.addEventListener('mouseleave', pauseVideo)
     card.addEventListener('focusout', pauseVideo)
+  })
+
+  document.querySelectorAll<HTMLButtonElement>('[data-product-gallery]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      const productId = Number(button.dataset.productGallery)
+      const product = products.find((item) => item.id === productId)
+      if (!product) return
+      const count = productMediaItems(product).length
+      if (count < 2) return
+      const current = productMediaIndex.get(productId) ?? 0
+      const step = Number(button.dataset.galleryStep ?? 1)
+      productMediaIndex.set(productId, (current + step + count) % count)
+      render()
+    })
   })
 
   document.querySelector<HTMLFormElement>('[data-custom-request-form]')?.addEventListener('submit', (event) => {
@@ -1178,6 +1255,7 @@ function attachEvents() {
     listing.description = String(formData.get('description') ?? listing.description)
     listing.imageUrl = String(formData.get('imageUrl') ?? '').trim() || undefined
     listing.videoUrl = String(formData.get('videoUrl') ?? '').trim() || undefined
+    listing.galleryUrls = parseGalleryUrls(String(formData.get('galleryUrls') ?? ''))
     listing.media = listing.videoUrl ? 'video' : 'photo'
     if (parsedPrice && Number.isFinite(parsedPrice)) {
       listing.price = parsedPrice
@@ -1294,6 +1372,7 @@ function applyListingEdits(edits: StoredProductEdit[]) {
       if (typeof edit.priceLabel === 'string') product.priceLabel = edit.priceLabel
       if (typeof edit.imageUrl === 'string') product.imageUrl = edit.imageUrl || undefined
       if (typeof edit.videoUrl === 'string') product.videoUrl = edit.videoUrl || undefined
+      if (Array.isArray(edit.galleryUrls)) product.galleryUrls = edit.galleryUrls.filter((url): url is string => typeof url === 'string' && Boolean(url.trim()))
       if (typeof edit.description === 'string') product.description = edit.description
       if (typeof edit.status === 'string') product.status = edit.status as ListingStatus
   })
@@ -1308,6 +1387,7 @@ function saveListingEdits() {
     priceLabel: product.priceLabel,
     imageUrl: product.imageUrl,
     videoUrl: product.videoUrl,
+    galleryUrls: product.galleryUrls ?? [],
     description: product.description,
     status: product.status,
   }))
@@ -1393,6 +1473,7 @@ async function saveListingToBackend(listing: Product) {
         imageClass: listing.imageClass,
         imageUrl: listing.imageUrl,
         videoUrl: listing.videoUrl,
+        galleryUrls: listing.galleryUrls ?? [],
         description: listing.description,
         status: listing.status,
       }),
@@ -1418,6 +1499,86 @@ async function saveListingMediaToBackend(listing: Product, files?: FileList | nu
       notes: listing.title,
     }),
   }).catch(() => undefined)))
+}
+
+async function handleUploadPreview(input: HTMLInputElement) {
+  const form = input.closest('form')
+  const target = form?.querySelector<HTMLElement>('[data-preview-target]')
+  const files = Array.from(input.files ?? [])
+  if (!target || !files.length) return
+
+  target.innerHTML = files
+    .slice(0, 8)
+    .map((file) => {
+      const url = URL.createObjectURL(file)
+      const label = file.type.startsWith('video') ? 'Video' : 'Photo'
+      return `
+        <figure>
+          ${file.type.startsWith('video')
+            ? `<video src="${url}" muted loop playsinline controls></video>`
+            : `<img src="${url}" alt="${escapeHtml(file.name)}" />`
+          }
+          <figcaption>${label}: ${escapeHtml(file.name)}</figcaption>
+        </figure>
+      `
+    })
+    .join('')
+
+  const listingId = input.dataset.listingMediaUpload
+  if (!listingId || !form) return
+
+  target.insertAdjacentHTML('beforeend', '<span class="upload-status">Uploading files...</span>')
+  const result = await uploadListingFiles(listingId, files)
+  target.querySelector('.upload-status')?.remove()
+
+  if (!result.ok || !result.files.length) {
+    target.insertAdjacentHTML('beforeend', '<span class="upload-status">Preview ready. Permanent storage still needs Cloudflare R2 connected.</span>')
+    return
+  }
+
+  const image = result.files.find((file) => file.ok && file.fileType.startsWith('image/'))
+  const video = result.files.find((file) => file.ok && file.fileType.startsWith('video/'))
+  const imageInput = form.querySelector<HTMLInputElement>('input[name="imageUrl"]')
+  const videoInput = form.querySelector<HTMLInputElement>('input[name="videoUrl"]')
+
+  if (image?.url && imageInput) imageInput.value = image.url
+  if (video?.url && videoInput) videoInput.value = video.url
+  const galleryInput = form.querySelector<HTMLTextAreaElement>('textarea[name="galleryUrls"]')
+  if (galleryInput) {
+    const existing = parseGalleryUrls(galleryInput.value)
+    const uploadedUrls = result.files
+      .filter((file) => file.ok && file.url)
+      .map((file) => file.url!)
+    galleryInput.value = Array.from(new Set([...existing, ...uploadedUrls])).join('\n')
+  }
+  target.insertAdjacentHTML('beforeend', '<span class="upload-status">Upload complete. Save the listing to publish these files.</span>')
+}
+
+function parseGalleryUrls(value: string) {
+  return value
+    .split(/\r?\n|,/)
+    .map((url) => url.trim())
+    .filter(Boolean)
+}
+
+async function uploadListingFiles(listingId: string, files: File[]) {
+  const formData = new FormData()
+  formData.set('ownerType', 'listing')
+  formData.set('ownerId', listingId)
+  files.forEach((file) => formData.append('files', file))
+
+  try {
+    const response = await fetch(`${siteApi}/uploads`, {
+      method: 'POST',
+      body: formData,
+    })
+    return await response.json() as {
+      ok: boolean
+      files: Array<{ ok?: boolean; url?: string; fileName: string; fileType: string; fileSize?: number }>
+    }
+  } catch {
+    return { ok: false, files: [] }
+  }
 }
 
 async function saveStorefrontTileToBackend(tile: StorefrontTile) {
