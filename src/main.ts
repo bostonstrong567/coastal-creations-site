@@ -4,6 +4,12 @@ import productGridUrl from './assets/product-grid.png'
 
 const contactEmail = 'mjcoastalcreations@gmail.com'
 const chimeApi = '/chime-api'
+const adminUsername = 'mjbussey'
+const adminPasswordHash = '160816406f40159d0c1a6aeb1cdf51e4ee1552ec0451f960c57f1826aa3b6139'
+const adminSessionKey = 'mjcc-admin-authenticated'
+
+type ListingStatus = 'Available' | 'Sold' | 'Hidden' | 'Draft'
+type AdminTab = 'storefront' | 'add' | 'listings' | 'orders' | 'requests' | 'messages'
 
 type Product = {
   id: number
@@ -15,6 +21,8 @@ type Product = {
   media: 'photo' | 'video'
   imageClass: string
   imageUrl?: string
+  description?: string
+  status?: ListingStatus
 }
 
 type Chime = {
@@ -25,6 +33,44 @@ type Chime = {
 }
 
 type ShellVisionField = 'title' | 'message' | 'footer' | 'scene'
+
+type AdminOrder = {
+  id: string
+  customer: string
+  email: string
+  item: string
+  date: string
+  status: 'New' | 'Confirmed' | 'Paid' | 'Shipped'
+}
+
+type AdminRequest = {
+  id: string
+  name: string
+  email: string
+  type: string
+  budget: string
+  neededBy: string
+  message: string
+  status: 'New' | 'In Progress' | 'Waiting on Customer'
+}
+
+type AdminMessage = {
+  id: string
+  name: string
+  email: string
+  subject: string
+  message: string
+  date: string
+  status: 'Unread' | 'Replied'
+}
+
+type StorefrontTile = {
+  id: number
+  title: string
+  media: 'photo' | 'video'
+  imageClass: string
+  imageUrl?: string
+}
 
 const shellVision = {
   productType: 'Wind Chime',
@@ -175,9 +221,123 @@ const products: Product[] = [
   },
 ]
 
-const categories = ['All', 'Wind Chimes', 'Jewelry', 'Earrings', 'Wreaths', 'Ornaments']
+const storefrontTiles: StorefrontTile[] = [
+  {
+    id: 1,
+    title: 'Wind Chimes',
+    media: 'photo',
+    imageClass: 'quad windchime',
+  },
+  {
+    id: 2,
+    title: 'Shell Earrings',
+    media: 'photo',
+    imageClass: 'quad earrings',
+  },
+  {
+    id: 3,
+    title: 'Featured Video',
+    media: 'video',
+    imageClass: 'quad wreath',
+  },
+  {
+    id: 4,
+    title: 'Christmas Ornaments',
+    media: 'photo',
+    imageClass: 'quad ornaments',
+  },
+]
+
+const categories = [
+  { label: 'Wind Chimes', slug: 'wind-chimes', category: 'Wind Chimes' },
+  { label: 'Jewelry', slug: 'jewelry', category: 'Earrings' },
+  { label: 'Earrings', slug: 'earrings', category: 'Earrings' },
+  { label: 'Wreaths', slug: 'wreaths', category: 'Wreaths' },
+  { label: 'Christmas Ornaments', slug: 'christmas-ornaments', category: 'Ornaments' },
+]
 const cart = new Map<number, number>()
-let selectedCategory = 'All'
+let adminLoginError = ''
+let adminTab: AdminTab = 'storefront'
+let editingListingId: number | null = null
+let adminNotice = ''
+
+products.forEach((product) => {
+  product.status ??= 'Available'
+  product.description ??= product.category === 'Earrings'
+    ? `${product.title} handmade with beach-found shell details and coastal accents.`
+    : `${product.title} handmade by Mary Jean with coastal materials.`
+})
+
+const sampleOrders: AdminOrder[] = [
+  {
+    id: 'MJ-1001',
+    customer: 'Jennifer L.',
+    email: 'jennifer@example.com',
+    item: 'Coastal Rose Shell Earrings',
+    date: 'May 30, 2026',
+    status: 'New',
+  },
+  {
+    id: 'MJ-1002',
+    customer: 'Sarah M.',
+    email: 'sarah@example.com',
+    item: 'Rose Garden Shell Earrings',
+    date: 'May 29, 2026',
+    status: 'Confirmed',
+  },
+  {
+    id: 'MJ-1003',
+    customer: 'Michael T.',
+    email: 'michael@example.com',
+    item: 'Custom wind chime request',
+    date: 'May 28, 2026',
+    status: 'Paid',
+  },
+]
+
+const sampleRequests: AdminRequest[] = [
+  {
+    id: 'CR-204',
+    name: 'Angela P.',
+    email: 'angela@example.com',
+    type: 'Design your own wind chime',
+    budget: '$75-$100',
+    neededBy: 'June 20, 2026',
+    message: 'Soft teal and white shells for a porch gift.',
+    status: 'New',
+  },
+  {
+    id: 'CR-205',
+    name: 'Denise R.',
+    email: 'denise@example.com',
+    type: 'Custom earrings',
+    budget: '$30-$50',
+    neededBy: 'No rush',
+    message: 'Looking for blush pink shells and silver hooks.',
+    status: 'In Progress',
+  },
+]
+
+const sampleMessages: AdminMessage[] = [
+  {
+    id: 'MSG-88',
+    name: 'Kelly B.',
+    email: 'kelly@example.com',
+    subject: 'Shipping question',
+    message: 'Can these be shipped as a birthday gift next week?',
+    date: 'May 30, 2026',
+    status: 'Unread',
+  },
+  {
+    id: 'MSG-89',
+    name: 'Tom C.',
+    email: 'tom@example.com',
+    subject: 'Holding an item',
+    message: 'Can you hold the Angel Wings earrings until Friday?',
+    date: 'May 29, 2026',
+    status: 'Replied',
+  },
+]
 
 const money = (value: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)
@@ -191,21 +351,28 @@ function cartSubtotal() {
 
 function render() {
   const isShellVisionPage = window.location.hash.startsWith('#shell-vision')
+  const isAdminPage = window.location.hash.startsWith('#admin')
+  const categorySlug = window.location.hash.replace('#category-', '')
+  const categoryPage = window.location.hash.startsWith('#category-')
+  const adminAuthed = isAdminAuthenticated()
 
   document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <header class="site-header">
-      <a class="brand-banner" href="#top" aria-label="Mary Jean's Coastal Creations home" style="--banner-bg: url('${bannerLogoUrl}')">
+      <a class="brand-banner" href="#top" aria-label="Mary Jean's Coastal Creations home">
         <img src="${bannerLogoUrl}" alt="Mary Jean's Coastal Creations" />
       </a>
       <div class="nav-row">
         <nav aria-label="Primary navigation">
           <a href="#shop">Shop</a>
-          <a href="#shell-vision">Shell Vision</a>
           <a href="#custom">Custom Gifts</a>
-          <a href="#admin">Admin Preview</a>
+          ${adminAuthed ? '<a href="#admin">Admin</a>' : ''}
           <a href="mailto:${contactEmail}">Contact</a>
         </nav>
         <a class="shell-vision-header" href="#shell-vision">Create with Shell Vision</a>
+        ${adminAuthed
+          ? '<button class="admin-header-button" data-admin-logout>Log Out</button>'
+          : '<a class="admin-header-button" href="#admin">Admin Login</a>'
+        }
         <button class="cart-button" data-open-cart aria-label="Open cart">
           <span class="cart-icon" aria-hidden="true">Cart</span>
           <span class="cart-count">${cartCount()}</span>
@@ -214,7 +381,14 @@ function render() {
     </header>
 
     <main id="top">
-      ${isShellVisionPage ? shellVisionMarkup(true) : storefrontMarkup()}
+      ${isShellVisionPage
+        ? shellVisionMarkup(true)
+        : isAdminPage
+          ? protectedAdminMarkup()
+          : categoryPage
+            ? categoryPageMarkup(categorySlug)
+            : storefrontMarkup()
+      }
     </main>
 
     <dialog class="cart-dialog" data-cart-dialog>
@@ -251,35 +425,28 @@ function storefrontMarkup() {
           </div>
         </div>
         <div class="hero-media" aria-label="Featured coastal handmade products">
-          <div class="media-card main-product product-photo windchime" style="--product-img: url('${productGridUrl}')">
-            <span>Featured Video</span>
-          </div>
-          <div class="media-card small-product product-photo real-inventory" style="--product-img: url('/inventory/12505.png')">
-            <span>Real Inventory</span>
+          <div class="storefront-window-grid">
+            ${storefrontTiles.map(storefrontTileMarkup).join('')}
           </div>
         </div>
       </section>
 
       <section class="category-rail" aria-label="Shop categories">
-        ${['Wind Chimes', 'Jewelry', 'Earrings', 'Wreaths', 'Christmas Ornaments', 'Custom Gifts'].map((item) => `
-          <a href="${item === 'Custom Gifts' ? '#custom' : '#shop'}">${item}</a>
+        ${categories.map((item) => `
+          <a href="#category-${item.slug}">${item.label}</a>
         `).join('')}
+        <a href="#custom">Custom Gifts</a>
       </section>
 
       <section id="shop" class="shop-section">
         <div class="section-heading">
           <div>
           <h2>Fresh from Mary Jean's table</h2>
-            <p>Small-batch coastal pieces with photos, short videos, availability, shipping, and tax estimates. Orders and questions go to ${contactEmail}.</p>
-          </div>
-          <div class="filters" role="group" aria-label="Filter products">
-            ${categories.map((category) => `
-              <button class="${selectedCategory === category ? 'active' : ''}" data-filter="${category}">${category}</button>
-            `).join('')}
+            <p>Small-batch coastal pieces with photos, short videos, availability, shipping, and tax estimates. Choose a category above to shop each collection on its own page.</p>
           </div>
         </div>
         <div class="product-grid">
-          ${filteredProducts().map(productCard).join('')}
+          ${products.slice(0, 8).map(productCard).join('')}
         </div>
       </section>
 
@@ -323,51 +490,345 @@ function storefrontMarkup() {
         </form>
       </section>
 
-      <section class="checkout-strip">
-        <div><strong>Order email</strong><span>Orders and communications go to ${contactEmail}.</span></div>
-        <div><strong>Automatic tax</strong><span>Designed for Stripe Tax or Square tax settings.</span></div>
-        <div><strong>Shipping ready</strong><span>Collects address before final confirmation.</span></div>
-      </section>
+  `
+}
 
-      <section id="admin" class="admin-section">
-        <div class="section-heading">
-          <div>
-            <h2>Mary Jean's simple admin</h2>
-            <p>Large, plain-language controls for adding listings, uploading photos and videos, checking orders, and reviewing custom requests.</p>
-          </div>
-          <button class="admin-login">Admin Login Preview</button>
+function protectedAdminMarkup() {
+  if (!isAdminAuthenticated()) {
+    return adminLoginMarkup()
+  }
+
+  return adminDashboardMarkup()
+}
+
+function categoryPageMarkup(slug: string) {
+  const category = categories.find((item) => item.slug === slug)
+
+  if (!category) {
+    return storefrontMarkup()
+  }
+
+  const listings = products.filter((product) => product.category === category.category)
+
+  return `
+    <section class="category-page">
+      <div class="category-page-head">
+        <div>
+          <h1>${escapeHtml(category.label)}</h1>
+          <p>${categoryDescription(category.label)}</p>
         </div>
-        <div class="admin-layout">
-          <aside class="admin-menu" aria-label="Admin sections">
-            <button class="active">Add Listing</button>
-            <button>My Listings</button>
-            <button>Orders</button>
-            <button>Custom Requests</button>
-            <button>Messages</button>
-          </aside>
-          <div class="admin-panel">
-            <h3>Add a new listing</h3>
-            <div class="admin-form-grid">
-              <label>Title<input value="Sea Glass Wind Chime" /></label>
-              <label>Price<input value="$68.00" /></label>
-              <label>Category<select><option>Wind Chimes</option><option>Earrings</option><option>Wreaths</option><option>Ornaments</option></select></label>
-              <label>Status<select><option>Available</option><option>Sold</option><option>Hidden</option><option>Draft</option></select></label>
+        <a class="secondary-action" href="#shop">Back to Shop</a>
+      </div>
+      <div class="product-grid category-product-grid">
+        ${listings.length
+          ? listings.map(productCard).join('')
+          : `<div class="empty-category"><strong>No listings yet.</strong><span>Mary Jean can add ${escapeHtml(category.label.toLowerCase())} from the admin dashboard.</span></div>`
+        }
+      </div>
+    </section>
+  `
+}
+
+function categoryDescription(label: string) {
+  if (label === 'Earrings' || label === 'Jewelry') {
+    return 'Shell earrings and jewelry listings are kept together here so customers can browse the current real inventory.'
+  }
+
+  if (label === 'Wind Chimes') {
+    return 'Handmade coastal wind chimes made from shells, sea glass, driftwood, and beach-found details.'
+  }
+
+  if (label === 'Wreaths') {
+    return 'Seasonal coastal wreaths, including Christmas pieces when available.'
+  }
+
+  if (label === 'Christmas Ornaments') {
+    return 'Gift-ready coastal Christmas ornaments and shell keepsakes.'
+  }
+
+  return 'Browse the current handmade coastal collection.'
+}
+
+function adminLoginMarkup() {
+  return `
+    <section id="admin" class="admin-section admin-login-section">
+      <div class="admin-login-card">
+        <div>
+          <h1>Admin Login</h1>
+          <p>Mary Jean's dashboard is private. Log in to add listings, upload photos or videos, and review orders.</p>
+        </div>
+        <form class="admin-login-form" data-admin-login-form>
+          <label>
+            Username
+            <input name="username" autocomplete="username" required />
+          </label>
+          <label>
+            Password
+            <input name="password" type="password" autocomplete="current-password" required />
+          </label>
+          ${adminLoginError ? `<div class="admin-login-error">${escapeHtml(adminLoginError)}</div>` : ''}
+          <button class="primary-action full" type="submit">Log In</button>
+        </form>
+      </div>
+    </section>
+  `
+}
+
+function adminDashboardMarkup() {
+  const adminTabs: Array<{ id: AdminTab; label: string }> = [
+    { id: 'storefront', label: 'Storefront Window' },
+    { id: 'add', label: 'Add Listing' },
+    { id: 'listings', label: 'My Listings' },
+    { id: 'orders', label: 'Orders' },
+    { id: 'requests', label: 'Custom Requests' },
+    { id: 'messages', label: 'Messages' },
+  ]
+
+  return `
+    <section id="admin" class="admin-section">
+      <div class="section-heading">
+        <div>
+          <h2>Mary Jean's simple admin</h2>
+          <p>Large, plain-language controls for adding listings, uploading photos and videos, checking orders, and reviewing custom requests.</p>
+        </div>
+      </div>
+      <div class="admin-layout">
+        <aside class="admin-menu" aria-label="Admin sections">
+          ${adminTabs.map((tab) => `
+            <button class="${adminTab === tab.id ? 'active' : ''}" data-admin-tab="${tab.id}">${tab.label}</button>
+          `).join('')}
+        </aside>
+        ${adminPanelMarkup()}
+      </div>
+    </section>
+  `
+}
+
+function adminPanelMarkup() {
+  if (adminTab === 'storefront') return adminStorefrontMarkup()
+  if (adminTab === 'listings') return adminListingsMarkup()
+  if (adminTab === 'orders') return adminOrdersMarkup()
+  if (adminTab === 'requests') return adminRequestsMarkup()
+  if (adminTab === 'messages') return adminMessagesMarkup()
+  return adminAddListingMarkup()
+}
+
+function storefrontTileMarkup(tile: StorefrontTile) {
+  const inlineStyle = tile.imageUrl
+    ? ` style="--window-img: url('${tile.imageUrl}')"`
+    : ` style="--window-img: url('${productGridUrl}')"`
+
+  return `
+    <div class="storefront-window-tile product-photo ${tile.imageClass}"${inlineStyle}>
+      <span>${escapeHtml(tile.title)}</span>
+    </div>
+  `
+}
+
+function adminStorefrontMarkup() {
+  return `
+    <div class="admin-panel">
+      <div class="admin-panel-head">
+        <div>
+          <h3>Storefront Window</h3>
+          <p class="admin-panel-note">These four cards are the front-page window shoppers see first. Change the title, photo/video label, or paste a hosted image/video URL for each spot.</p>
+        </div>
+        <span>4 cards</span>
+      </div>
+      ${adminNotice ? `<div class="admin-notice">${escapeHtml(adminNotice)}</div>` : ''}
+      <div class="admin-storefront-grid">
+        ${storefrontTiles.map((tile) => `
+          <form class="admin-storefront-card" data-storefront-form data-tile-id="${tile.id}">
+            <div class="storefront-preview product-photo ${tile.imageClass}" style="--window-img: url('${tile.imageUrl ?? productGridUrl}')">
+              <span>${escapeHtml(tile.title)}</span>
             </div>
-            <label class="admin-description">Description<textarea>Handmade from beach-found shells, sea glass, and driftwood tones.</textarea></label>
+            <div class="admin-form-grid">
+              <label>Card title<input name="title" value="${escapeHtml(tile.title)}" /></label>
+              <label>Media type<select name="media">
+                <option ${tile.media === 'photo' ? 'selected' : ''}>photo</option>
+                <option ${tile.media === 'video' ? 'selected' : ''}>video</option>
+              </select></label>
+            </div>
+            <label class="admin-description">Image or video URL<input name="imageUrl" value="${escapeHtml(tile.imageUrl ?? '')}" placeholder="Paste a hosted photo or video URL" /></label>
             <div class="admin-upload">
               <div>
-                <strong>Upload photos or videos</strong>
-                <span>Choose from phone camera roll, preview, then publish.</span>
+                <strong>Upload replacement later</strong>
+                <span>This preview shows the file name now. A permanent upload will connect to backend storage later.</span>
               </div>
-              <input type="file" multiple accept="image/*,video/*" data-upload-preview />
+              <input type="file" accept="image/*,video/*" data-upload-preview />
+              <div class="upload-preview" data-preview-target></div>
             </div>
             <div class="admin-actions">
-              <button>Save Draft</button>
-              <button class="primary-action">Preview & Publish</button>
+              <button class="primary-action" type="submit">Save Storefront Card</button>
             </div>
+          </form>
+        `).join('')}
+      </div>
+    </div>
+  `
+}
+
+function adminAddListingMarkup() {
+  return `
+    <div class="admin-panel">
+      <h3>Add a new listing</h3>
+      <p class="admin-panel-note">Use this form for new wind chimes, earrings, wreaths, ornaments, or gifts. The real save action will connect to the backend later.</p>
+      <div class="admin-form-grid">
+        <label>Title<input value="Sea Glass Wind Chime" /></label>
+        <label>Price<input value="$68.00" /></label>
+        <label>Category<select><option>Wind Chimes</option><option>Earrings</option><option>Wreaths</option><option>Ornaments</option></select></label>
+        <label>Status<select><option>Available</option><option>Sold</option><option>Hidden</option><option>Draft</option></select></label>
+      </div>
+      <label class="admin-description">Description<textarea>Handmade from beach-found shells, sea glass, and driftwood tones.</textarea></label>
+      <div class="admin-upload">
+        <div>
+          <strong>Upload photos or videos</strong>
+          <span>Choose from phone camera roll, preview, then publish.</span>
+        </div>
+        <input type="file" multiple accept="image/*,video/*" data-upload-preview />
+      </div>
+      <div class="admin-actions">
+        <button>Save Draft</button>
+        <button class="primary-action">Preview & Publish</button>
+      </div>
+    </div>
+  `
+}
+
+function adminListingsMarkup() {
+  const earringListings = products.filter((product) => product.category === 'Earrings')
+  const editingListing = editingListingId ? products.find((product) => product.id === editingListingId) : undefined
+
+  if (editingListing) {
+    return adminEditListingMarkup(editingListing)
+  }
+
+  return `
+    <div class="admin-panel">
+      <div class="admin-panel-head">
+        <div>
+          <h3>My Listings</h3>
+          <p class="admin-panel-note">These are the current earring listings from Mary Jean's real inventory images.</p>
+        </div>
+        <span>${earringListings.length} listings</span>
+      </div>
+      ${adminNotice ? `<div class="admin-notice">${escapeHtml(adminNotice)}</div>` : ''}
+      <div class="admin-listing-grid">
+        ${earringListings.map((listing) => `
+          <article class="admin-listing-card">
+            <img src="${listing.imageUrl}" alt="${escapeHtml(listing.title)}" />
+            <div>
+              <p>${escapeHtml(listing.category)}</p>
+              <h4>${escapeHtml(listing.title)}</h4>
+              <span>${listing.price ? money(listing.price) : escapeHtml(listing.priceLabel ?? 'Price TBD')}</span>
+              <small>${escapeHtml(listing.status ?? 'Available')}</small>
+            </div>
+            <div class="listing-actions">
+              <button data-edit-listing="${listing.id}">Edit</button>
+              <button data-status-listing="${listing.id}" data-status="Sold">Mark Sold</button>
+              <button data-status-listing="${listing.id}" data-status="Hidden">Hide</button>
+            </div>
+          </article>
+        `).join('')}
+      </div>
+    </div>
+  `
+}
+
+function adminEditListingMarkup(listing: Product) {
+  return `
+    <div class="admin-panel">
+      <div class="admin-panel-head">
+        <div>
+          <h3>Edit Listing</h3>
+          <p class="admin-panel-note">Update the title, price, description, or status for this item.</p>
+        </div>
+        <button data-admin-cancel-edit>Back to My Listings</button>
+      </div>
+      <form class="admin-edit-form" data-admin-edit-form data-listing-id="${listing.id}">
+        <div class="admin-edit-layout">
+          <img src="${listing.imageUrl}" alt="${escapeHtml(listing.title)}" />
+          <div class="admin-form-grid">
+            <label>Title<input name="title" value="${escapeHtml(listing.title)}" /></label>
+            <label>Price<input name="price" value="${listing.price ? money(listing.price) : ''}" placeholder="Example: 34.00" /></label>
+            <label>Category<select name="category">${['Earrings', 'Wind Chimes', 'Jewelry', 'Wreaths', 'Ornaments', 'Custom Gifts'].map((category) => `<option ${listing.category === category ? 'selected' : ''}>${category}</option>`).join('')}</select></label>
+            <label>Status<select name="status">${['Available', 'Sold', 'Hidden', 'Draft'].map((status) => `<option ${listing.status === status ? 'selected' : ''}>${status}</option>`).join('')}</select></label>
           </div>
         </div>
-      </section>
+        <label class="admin-description">Description<textarea name="description">${escapeHtml(listing.description ?? '')}</textarea></label>
+        <div class="admin-actions">
+          <button type="button" data-admin-cancel-edit>Cancel</button>
+          <button class="primary-action" type="submit">Save Listing</button>
+        </div>
+      </form>
+    </div>
+  `
+}
+
+function adminOrdersMarkup() {
+  return `
+    <div class="admin-panel">
+      <h3>Orders</h3>
+      <p class="admin-panel-note">Sample order layout. Real orders will land here when checkout/order saving is connected.</p>
+      <div class="admin-table">
+        ${sampleOrders.map((order) => `
+          <div class="admin-row">
+            <strong>${escapeHtml(order.id)}</strong>
+            <span>${escapeHtml(order.customer)}<small>${escapeHtml(order.email)}</small></span>
+            <span>${escapeHtml(order.item)}</span>
+            <span>${escapeHtml(order.date)}</span>
+            <em>${escapeHtml(order.status)}</em>
+            <button>View</button>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `
+}
+
+function adminRequestsMarkup() {
+  return `
+    <div class="admin-panel">
+      <h3>Custom Requests</h3>
+      <p class="admin-panel-note">Custom Requests are for structured custom work: design-your-own wind chimes, custom earrings, gifts, budgets, deadlines, and inspiration photos.</p>
+      <div class="admin-inbox-list">
+        ${sampleRequests.map((request) => `
+          <article class="admin-inbox-card">
+            <div>
+              <strong>${escapeHtml(request.type)}</strong>
+              <span>${escapeHtml(request.name)} · ${escapeHtml(request.email)}</span>
+            </div>
+            <p>${escapeHtml(request.message)}</p>
+            <dl>
+              <div><dt>Budget</dt><dd>${escapeHtml(request.budget)}</dd></div>
+              <div><dt>Needed by</dt><dd>${escapeHtml(request.neededBy)}</dd></div>
+              <div><dt>Status</dt><dd>${escapeHtml(request.status)}</dd></div>
+            </dl>
+          </article>
+        `).join('')}
+      </div>
+    </div>
+  `
+}
+
+function adminMessagesMarkup() {
+  return `
+    <div class="admin-panel">
+      <h3>Messages</h3>
+      <p class="admin-panel-note">Messages are general customer questions, shipping notes, and availability conversations.</p>
+      <div class="admin-inbox-list">
+        ${sampleMessages.map((message) => `
+          <article class="admin-inbox-card">
+            <div>
+              <strong>${escapeHtml(message.subject)}</strong>
+              <span>${escapeHtml(message.name)} · ${escapeHtml(message.email)} · ${escapeHtml(message.date)}</span>
+            </div>
+            <p>${escapeHtml(message.message)}</p>
+            <em>${escapeHtml(message.status)}</em>
+          </article>
+        `).join('')}
+      </div>
+    </div>
   `
 }
 
@@ -375,12 +836,13 @@ function productCard(product: Product) {
   const realInventoryImage = product.imageUrl
     ? `<img class="inventory-image" src="${product.imageUrl}" alt="${product.title}" />`
     : ''
+  const imageStyle = product.imageUrl ? '' : ` style="--product-img: url('${productGridUrl}')"`
 
   return `
     <article class="product-card">
-      <div class="product-photo ${product.imageClass}" style="--product-img: url('${product.imageUrl ?? productGridUrl}')">
+      <div class="product-photo ${product.imageClass}"${imageStyle}>
         ${realInventoryImage}
-        <span>${product.media === 'video' ? 'Video + photos' : 'Photos'}</span>
+        ${product.imageUrl ? '' : `<span>${product.media === 'video' ? 'Video + photos' : 'Photos'}</span>`}
       </div>
       <div class="product-info">
         <div>
@@ -508,12 +970,6 @@ function chimeGridMarkup() {
   `).join('')
 }
 
-function filteredProducts() {
-  if (selectedCategory === 'All') return products
-  if (selectedCategory === 'Jewelry') return products.filter((product) => ['Jewelry', 'Earrings'].includes(product.category))
-  return products.filter((product) => product.category === selectedCategory)
-}
-
 function cartCount() {
   return Array.from(cart.values()).reduce((total, qty) => total + qty, 0)
 }
@@ -547,13 +1003,6 @@ function totalsMarkup() {
 }
 
 function attachEvents() {
-  document.querySelectorAll<HTMLButtonElement>('[data-filter]').forEach((button) => {
-    button.addEventListener('click', () => {
-      selectedCategory = button.dataset.filter ?? 'All'
-      render()
-    })
-  })
-
   document.querySelectorAll<HTMLButtonElement>('[data-add-cart]').forEach((button) => {
     button.addEventListener('click', () => {
       const id = Number(button.dataset.addCart)
@@ -578,6 +1027,103 @@ function attachEvents() {
         .map((file) => `<span>${file.type.startsWith('video') ? 'Video' : 'Photo'}: ${file.name}</span>`)
         .join('')
     })
+  })
+
+  document.querySelector<HTMLFormElement>('[data-admin-login-form]')?.addEventListener('submit', (event) => {
+    event.preventDefault()
+    void handleAdminLogin(event.currentTarget as HTMLFormElement)
+  })
+
+  document.querySelectorAll<HTMLButtonElement>('[data-admin-logout]').forEach((button) => {
+    button.addEventListener('click', () => {
+      sessionStorage.removeItem(adminSessionKey)
+      adminLoginError = ''
+      adminTab = 'add'
+      editingListingId = null
+      adminNotice = ''
+      window.location.hash = '#shop'
+      render()
+    })
+  })
+
+  document.querySelectorAll<HTMLButtonElement>('[data-admin-tab]').forEach((button) => {
+    button.addEventListener('click', () => {
+      adminTab = (button.dataset.adminTab as AdminTab) ?? 'add'
+      editingListingId = null
+      adminNotice = ''
+      render()
+    })
+  })
+
+  document.querySelectorAll<HTMLButtonElement>('[data-edit-listing]').forEach((button) => {
+    button.addEventListener('click', () => {
+      editingListingId = Number(button.dataset.editListing)
+      adminNotice = ''
+      render()
+    })
+  })
+
+  document.querySelectorAll<HTMLButtonElement>('[data-admin-cancel-edit]').forEach((button) => {
+    button.addEventListener('click', () => {
+      editingListingId = null
+      adminNotice = ''
+      render()
+    })
+  })
+
+  document.querySelectorAll<HTMLButtonElement>('[data-status-listing]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const listing = products.find((product) => product.id === Number(button.dataset.statusListing))
+      const status = button.dataset.status as ListingStatus
+      if (listing && status) {
+        listing.status = status
+        adminNotice = `${listing.title} is now ${status}.`
+        render()
+      }
+    })
+  })
+
+  document.querySelectorAll<HTMLFormElement>('[data-storefront-form]').forEach((form) => {
+    form.addEventListener('submit', (event) => {
+      event.preventDefault()
+      const tile = storefrontTiles.find((item) => item.id === Number(form.dataset.tileId))
+      if (!tile) return
+
+      const formData = new FormData(form)
+      const imageUrl = String(formData.get('imageUrl') ?? '').trim()
+      tile.title = String(formData.get('title') ?? tile.title).trim() || tile.title
+      tile.media = String(formData.get('media') ?? tile.media) === 'video' ? 'video' : 'photo'
+      tile.imageUrl = imageUrl || undefined
+      adminNotice = `${tile.title} storefront card was saved for this preview.`
+      render()
+    })
+  })
+
+  document.querySelector<HTMLFormElement>('[data-admin-edit-form]')?.addEventListener('submit', (event) => {
+    event.preventDefault()
+    const form = event.currentTarget as HTMLFormElement
+    const listing = products.find((product) => product.id === Number(form.dataset.listingId))
+    if (!listing) return
+
+    const formData = new FormData(form)
+    const rawPrice = String(formData.get('price') ?? '').replace(/[^0-9.]/g, '')
+    const parsedPrice = rawPrice ? Number(rawPrice) : undefined
+
+    listing.title = String(formData.get('title') ?? listing.title).trim() || listing.title
+    listing.category = String(formData.get('category') ?? listing.category)
+    listing.status = String(formData.get('status') ?? listing.status) as ListingStatus
+    listing.description = String(formData.get('description') ?? listing.description)
+    if (parsedPrice && Number.isFinite(parsedPrice)) {
+      listing.price = parsedPrice
+      listing.priceLabel = undefined
+    } else {
+      listing.price = undefined
+      listing.priceLabel = 'Price TBD'
+    }
+
+    editingListingId = null
+    adminNotice = `${listing.title} was saved.`
+    render()
   })
 
   document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('[data-shell-field]').forEach((field) => {
@@ -623,6 +1169,36 @@ function attachEvents() {
 
 window.addEventListener('hashchange', render)
 render()
+
+function isAdminAuthenticated() {
+  return sessionStorage.getItem(adminSessionKey) === 'true'
+}
+
+async function handleAdminLogin(form: HTMLFormElement) {
+  const formData = new FormData(form)
+  const username = String(formData.get('username') ?? '').trim()
+  const password = String(formData.get('password') ?? '')
+  const passwordHash = await sha256(password)
+
+  if (username === adminUsername && passwordHash === adminPasswordHash) {
+    sessionStorage.setItem(adminSessionKey, 'true')
+    adminLoginError = ''
+    window.location.hash = '#admin'
+    render()
+    return
+  }
+
+  adminLoginError = 'That username or password is not correct.'
+  render()
+}
+
+async function sha256(value: string) {
+  const bytes = new TextEncoder().encode(value)
+  const hash = await crypto.subtle.digest('SHA-256', bytes)
+  return Array.from(new Uint8Array(hash))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+}
 
 async function loadChimes() {
   shellVision.loadingChimes = true
