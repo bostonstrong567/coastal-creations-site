@@ -1215,6 +1215,18 @@ textarea {
   gap: 0.7rem;
 }
 
+.shell-materials-head {
+  margin-top: 1.5rem;
+}
+
+.admin-material-grid {
+  margin-top: 1rem;
+}
+
+.admin-material-card {
+  cursor: default;
+}
+
 .media-preview-grid figure {
   margin: 0;
   overflow: hidden;

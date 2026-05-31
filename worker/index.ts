@@ -29,6 +29,7 @@ interface Env {
   ASSETS: { fetch: (req: Request) => Promise<Response> };
   DB?: D1Database;
   MEDIA_BUCKET?: R2Bucket;
+  CHIME_ADMIN_KEY?: string;
 }
 
 type ListingInput = {
@@ -132,6 +133,10 @@ async function proxyChimeApi(request: Request, url: URL) {
 }
 
 async function handleApi(request: Request, env: Env, url: URL) {
+  if (url.pathname === '/api/shell-materials' && request.method === 'POST') {
+    return uploadShellVisionMaterials(request, env);
+  }
+
   if (url.pathname === '/api/uploads' && request.method === 'POST') {
     return uploadMediaFiles(request, env, url);
   }
@@ -279,6 +284,48 @@ async function databaseNotConfigured(request: Request, url: URL) {
   }
 
   return json({ ok: false, database: false, error: 'not found' }, 404);
+}
+
+async function uploadShellVisionMaterials(request: Request, env: Env) {
+  if (!env.CHIME_ADMIN_KEY) {
+    return json({
+      ok: false,
+      error: 'Shell Vision admin key is not configured. Add CHIME_ADMIN_KEY as a Cloudflare Worker secret.',
+    }, 501);
+  }
+
+  const incoming = await request.formData();
+  const files = incoming.getAll('images').filter((item): item is File => item instanceof File);
+  const names = incoming.getAll('names').map((name) => String(name || '').trim());
+
+  if (!files.length) {
+    return json({ ok: false, error: 'Choose at least one material photo.' }, 400);
+  }
+
+  const outgoing = new FormData();
+  files.slice(0, 12).forEach((file, index) => {
+    outgoing.append('images', file, file.name);
+    outgoing.append('names', names[index] || names[0] || file.name.replace(/\.[^.]+$/, ''));
+  });
+
+  const response = await fetch(`${CHIME_API}/api/chimes`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${env.CHIME_ADMIN_KEY}`,
+      'X-Admin-Key': env.CHIME_ADMIN_KEY,
+    },
+    body: outgoing,
+  });
+
+  const text = await response.text();
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = { ok: false, error: text || 'Shell Vision upload failed.' };
+  }
+
+  return json(body, response.status);
 }
 
 async function uploadMediaFiles(request: Request, env: Env, url: URL) {

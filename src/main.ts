@@ -12,7 +12,7 @@ const listingStorageKey = 'mjcc-listing-edits-v1'
 const storefrontStorageKey = 'mjcc-storefront-window-v1'
 
 type ListingStatus = 'Available' | 'Sold' | 'Hidden' | 'Draft'
-type AdminTab = 'storefront' | 'add' | 'listings' | 'orders' | 'requests' | 'messages'
+type AdminTab = 'storefront' | 'add' | 'listings' | 'materials' | 'orders' | 'requests' | 'messages'
 
 type Product = {
   id: number
@@ -597,6 +597,7 @@ function adminDashboardMarkup() {
     { id: 'storefront', label: 'Storefront Window' },
     { id: 'add', label: 'Add Listing' },
     { id: 'listings', label: 'My Listings' },
+    { id: 'materials', label: 'Shell Vision Materials' },
     { id: 'orders', label: 'Orders' },
     { id: 'requests', label: 'Custom Requests' },
     { id: 'messages', label: 'Messages' },
@@ -625,6 +626,7 @@ function adminDashboardMarkup() {
 function adminPanelMarkup() {
   if (adminTab === 'storefront') return adminStorefrontMarkup()
   if (adminTab === 'listings') return adminListingsMarkup()
+  if (adminTab === 'materials') return adminShellMaterialsMarkup()
   if (adminTab === 'orders') return adminOrdersMarkup()
   if (adminTab === 'requests') return adminRequestsMarkup()
   if (adminTab === 'messages') return adminMessagesMarkup()
@@ -801,6 +803,58 @@ function adminEditListingMarkup(listing: Product) {
       </form>
     </div>
   `
+}
+
+function adminShellMaterialsMarkup() {
+  return `
+    <div class="admin-panel">
+      <div class="admin-panel-head">
+        <div>
+          <h3>Shell Vision Materials</h3>
+          <p class="admin-panel-note">Upload shells, sea glass, charms, driftwood, and other material photos for customers to choose inside Shell Vision.</p>
+        </div>
+        <button type="button" data-refresh-chimes>Refresh Materials</button>
+      </div>
+      ${adminNotice ? `<div class="admin-notice">${escapeHtml(adminNotice)}</div>` : ''}
+      <form class="admin-edit-form" data-shell-material-form>
+        <div class="admin-form-grid">
+          <label>Material name<input name="name" placeholder="Example: Aqua sea glass mix" required /></label>
+          <label>Material photos<input name="images" type="file" multiple accept="image/*" required data-upload-preview /></label>
+        </div>
+        <div class="upload-preview media-preview-grid" data-preview-target></div>
+        <div class="admin-actions">
+          <button class="primary-action" type="submit">Upload To Shell Vision</button>
+        </div>
+      </form>
+      <div class="admin-panel-head shell-materials-head">
+        <div>
+          <h3>Current Shell Vision Catalog</h3>
+          <p class="admin-panel-note">${shellVision.loadingChimes ? 'Loading materials...' : `${shellVision.chimes.length} materials available`}</p>
+        </div>
+      </div>
+      <div class="chime-grid admin-material-grid">
+        ${adminMaterialGridMarkup()}
+      </div>
+    </div>
+  `
+}
+
+function adminMaterialGridMarkup() {
+  if (shellVision.loadingChimes) {
+    return '<div class="chime-empty">Loading Shell Vision materials...</div>'
+  }
+
+  if (!shellVision.chimes.length) {
+    return '<div class="chime-empty">No Shell Vision materials are loaded yet. Upload the first material photo above.</div>'
+  }
+
+  return shellVision.chimes.map((chime) => `
+    <article class="chime-pick admin-material-card">
+      <img src="${chime.image_url}" alt="${escapeHtml(chime.name)}" />
+      <strong>${escapeHtml(chime.name)}</strong>
+      <span>${escapeHtml(chime.description ?? 'Material photo for Shell Vision')}</span>
+    </article>
+  `).join('')
 }
 
 function adminOrdersMarkup() {
@@ -1163,6 +1217,11 @@ function attachEvents() {
   document.querySelector<HTMLFormElement>('[data-custom-request-form]')?.addEventListener('submit', (event) => {
     event.preventDefault()
     void submitCustomRequest(event.currentTarget as HTMLFormElement)
+  })
+
+  document.querySelector<HTMLFormElement>('[data-shell-material-form]')?.addEventListener('submit', (event) => {
+    event.preventDefault()
+    void uploadShellMaterial(event.currentTarget as HTMLFormElement)
   })
 
   document.querySelector<HTMLFormElement>('[data-admin-login-form]')?.addEventListener('submit', (event) => {
@@ -1629,6 +1688,49 @@ async function submitCustomRequest(form: HTMLFormElement) {
     const subject = encodeURIComponent(`Custom Gift Request from ${payload.name || 'customer'}`)
     const body = encodeURIComponent(`${payload.message}\n\nEmail: ${payload.email}\nType: ${payload.requestType}`)
     window.location.href = `mailto:${contactEmail}?subject=${subject}&body=${body}`
+  }
+}
+
+async function uploadShellMaterial(form: HTMLFormElement) {
+  const formData = new FormData(form)
+  const name = String(formData.get('name') ?? '').trim()
+  const files = Array.from(form.querySelector<HTMLInputElement>('input[name="images"]')?.files ?? [])
+
+  if (!name || !files.length) {
+    adminNotice = 'Add a material name and at least one photo.'
+    render()
+    return
+  }
+
+  const upload = new FormData()
+  files.forEach((file) => {
+    upload.append('images', file)
+    upload.append('names', name)
+  })
+
+  adminNotice = 'Uploading Shell Vision material...'
+  render()
+
+  try {
+    const response = await fetch(`${siteApi}/shell-materials`, {
+      method: 'POST',
+      body: upload,
+    })
+    const data = await response.json() as { ok?: boolean; error?: string; created?: unknown[]; skipped?: unknown[] }
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error ?? `Upload failed: ${response.status}`)
+    }
+
+    shellVision.chimesLoaded = false
+    await loadChimes()
+    adminTab = 'materials'
+    adminNotice = `${data.created?.length ?? files.length} Shell Vision material photo${files.length === 1 ? '' : 's'} uploaded.`
+    form.reset()
+    render()
+  } catch (error) {
+    adminTab = 'materials'
+    adminNotice = error instanceof Error ? error.message : 'Shell Vision upload failed.'
+    render()
   }
 }
 

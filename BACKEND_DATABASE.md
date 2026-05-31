@@ -68,6 +68,7 @@ Once this is connected, the admin listing edit page can drag/drop files, upload 
 ## API Routes
 
 - `GET /api/health`
+- `POST /api/shell-materials`
 - `GET /api/listings`
 - `PUT /api/listings`
 - `GET /api/storefront`
@@ -80,3 +81,13 @@ Once this is connected, the admin listing edit page can drag/drop files, upload 
 - `GET /api/uploads/:key`
 
 If D1 is not configured yet, these routes return clean JSON with `"database": false`, and the frontend falls back to local browser storage so the site still works.
+
+## Shell Vision Material Uploads
+
+The Admin `Shell Vision Materials` tab uploads material photos to the separate Chime Builder API. Store the Chime Builder admin key as a Cloudflare Worker secret:
+
+```bash
+npx wrangler secret put CHIME_ADMIN_KEY
+```
+
+Do not put this key in frontend code or commit it to GitHub.
