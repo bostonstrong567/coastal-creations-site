@@ -6,6 +6,7 @@ This site now has a Cloudflare Worker API and D1 schema for:
 - Storefront window cards
 - Customer custom-gift ideas and requests
 - Photo/video metadata
+- Optional hover videos for product cards
 
 The database stores records and media metadata. Large image/video files should be stored in Cloudflare R2 or another object store next; D1 should not hold large binary uploads.
 
@@ -39,6 +40,7 @@ This applies:
 
 - `migrations/0001_coastal_creations.sql`
 - `migrations/0002_seed_catalog.sql`
+- `migrations/0003_listing_video_url.sql`
 
 ## API Routes
 

@@ -24,6 +24,7 @@ type Product = {
   media: 'photo' | 'video'
   imageClass: string
   imageUrl?: string
+  videoUrl?: string
   description?: string
   status?: ListingStatus
 }
@@ -751,6 +752,8 @@ function adminListingsMarkup() {
 }
 
 function adminEditListingMarkup(listing: Product) {
+  const imageUrl = listing.imageUrl ?? ''
+  const videoUrl = listing.videoUrl ?? ''
   return `
     <div class="admin-panel">
       <div class="admin-panel-head">
@@ -762,15 +765,28 @@ function adminEditListingMarkup(listing: Product) {
       </div>
       <form class="admin-edit-form" data-admin-edit-form data-listing-id="${listing.id}">
         <div class="admin-edit-layout">
-          <img src="${listing.imageUrl}" alt="${escapeHtml(listing.title)}" />
+          <div class="admin-media-preview">
+            ${imageUrl ? `<img src="${imageUrl}" alt="${escapeHtml(listing.title)}" />` : '<div class="empty-preview">No image yet.</div>'}
+            ${videoUrl ? `<video src="${videoUrl}" muted loop playsinline controls></video>` : ''}
+          </div>
           <div class="admin-form-grid">
             <label>Title<input name="title" value="${escapeHtml(listing.title)}" /></label>
             <label>Price<input name="price" value="${listing.price ? money(listing.price) : ''}" placeholder="Example: 34.00" /></label>
             <label>Category<select name="category">${['Earrings', 'Wind Chimes', 'Jewelry', 'Wreaths', 'Ornaments', 'Custom Gifts'].map((category) => `<option ${listing.category === category ? 'selected' : ''}>${category}</option>`).join('')}</select></label>
             <label>Status<select name="status">${['Available', 'Sold', 'Hidden', 'Draft'].map((status) => `<option ${listing.status === status ? 'selected' : ''}>${status}</option>`).join('')}</select></label>
+            <label>Main photo URL<input name="imageUrl" value="${escapeHtml(imageUrl)}" placeholder="/inventory/12505.png or hosted image URL" /></label>
+            <label>Hover video URL<input name="videoUrl" value="${escapeHtml(videoUrl)}" placeholder="Paste a hosted .mp4/.webm URL" /></label>
           </div>
         </div>
         <label class="admin-description">Description<textarea name="description">${escapeHtml(listing.description ?? '')}</textarea></label>
+        <div class="admin-upload">
+          <div>
+            <strong>Upload photos or videos</strong>
+            <span>Pick files for preview and database media records. Permanent video hosting needs Cloudflare R2 next.</span>
+          </div>
+          <input type="file" multiple accept="image/*,video/*" data-upload-preview data-listing-media-upload="${listing.id}" />
+          <div class="upload-preview" data-preview-target></div>
+        </div>
         <div class="admin-actions">
           <button type="button" data-admin-cancel-edit>Cancel</button>
           <button class="primary-action" type="submit">Save Listing</button>
@@ -851,13 +867,17 @@ function productCard(product: Product) {
   const realInventoryImage = product.imageUrl
     ? `<img class="inventory-image" src="${product.imageUrl}" alt="${product.title}" />`
     : ''
+  const hoverVideo = product.videoUrl
+    ? `<video class="product-hover-video" src="${product.videoUrl}" muted loop playsinline preload="metadata" aria-label="${escapeHtml(product.title)} video"></video>`
+    : ''
   const imageStyle = product.imageUrl ? '' : ` style="--product-img: url('${productGridUrl}')"`
 
   return `
-    <article class="product-card">
+    <article class="product-card ${product.videoUrl ? 'has-hover-video' : ''}">
       <div class="product-photo ${product.imageClass}"${imageStyle}>
         ${realInventoryImage}
-        ${product.imageUrl ? '' : `<span>${product.media === 'video' ? 'Video + photos' : 'Photos'}</span>`}
+        ${hoverVideo}
+        ${product.imageUrl ? (product.videoUrl ? '<span>Video</span>' : '') : `<span>${product.media === 'video' ? 'Video + photos' : 'Photos'}</span>`}
       </div>
       <div class="product-info">
         <div>
@@ -1044,6 +1064,25 @@ function attachEvents() {
     })
   })
 
+  document.querySelectorAll<HTMLElement>('.product-card.has-hover-video').forEach((card) => {
+    const video = card.querySelector<HTMLVideoElement>('.product-hover-video')
+    if (!video) return
+
+    const playVideo = () => {
+      video.currentTime = 0
+      void video.play()
+    }
+    const pauseVideo = () => {
+      video.pause()
+      video.currentTime = 0
+    }
+
+    card.addEventListener('mouseenter', playVideo)
+    card.addEventListener('focusin', playVideo)
+    card.addEventListener('mouseleave', pauseVideo)
+    card.addEventListener('focusout', pauseVideo)
+  })
+
   document.querySelector<HTMLFormElement>('[data-custom-request-form]')?.addEventListener('submit', (event) => {
     event.preventDefault()
     void submitCustomRequest(event.currentTarget as HTMLFormElement)
@@ -1137,6 +1176,9 @@ function attachEvents() {
     listing.category = String(formData.get('category') ?? listing.category)
     listing.status = String(formData.get('status') ?? listing.status) as ListingStatus
     listing.description = String(formData.get('description') ?? listing.description)
+    listing.imageUrl = String(formData.get('imageUrl') ?? '').trim() || undefined
+    listing.videoUrl = String(formData.get('videoUrl') ?? '').trim() || undefined
+    listing.media = listing.videoUrl ? 'video' : 'photo'
     if (parsedPrice && Number.isFinite(parsedPrice)) {
       listing.price = parsedPrice
       listing.priceLabel = undefined
@@ -1147,6 +1189,7 @@ function attachEvents() {
 
     saveListingEdits()
     void saveListingToBackend(listing)
+    void saveListingMediaToBackend(listing, form.querySelector<HTMLInputElement>('[data-listing-media-upload]')?.files)
     editingListingId = null
     adminNotice = `${listing.title} was saved.`
     render()
@@ -1248,9 +1291,11 @@ function applyListingEdits(edits: StoredProductEdit[]) {
     if (typeof edit.category === 'string') product.category = edit.category
     if (typeof edit.price === 'number') product.price = edit.price
     if (edit.price === null) product.price = undefined
-    if (typeof edit.priceLabel === 'string') product.priceLabel = edit.priceLabel
-    if (typeof edit.description === 'string') product.description = edit.description
-    if (typeof edit.status === 'string') product.status = edit.status as ListingStatus
+      if (typeof edit.priceLabel === 'string') product.priceLabel = edit.priceLabel
+      if (typeof edit.imageUrl === 'string') product.imageUrl = edit.imageUrl || undefined
+      if (typeof edit.videoUrl === 'string') product.videoUrl = edit.videoUrl || undefined
+      if (typeof edit.description === 'string') product.description = edit.description
+      if (typeof edit.status === 'string') product.status = edit.status as ListingStatus
   })
 }
 
@@ -1261,6 +1306,8 @@ function saveListingEdits() {
     category: product.category,
     price: product.price ?? null,
     priceLabel: product.priceLabel,
+    imageUrl: product.imageUrl,
+    videoUrl: product.videoUrl,
     description: product.description,
     status: product.status,
   }))
@@ -1345,6 +1392,7 @@ async function saveListingToBackend(listing: Product) {
         media: listing.media,
         imageClass: listing.imageClass,
         imageUrl: listing.imageUrl,
+        videoUrl: listing.videoUrl,
         description: listing.description,
         status: listing.status,
       }),
@@ -1352,6 +1400,24 @@ async function saveListingToBackend(listing: Product) {
   } catch {
     // Local browser save already happened.
   }
+}
+
+async function saveListingMediaToBackend(listing: Product, files?: FileList | null) {
+  if (!files?.length) return
+
+  await Promise.all(Array.from(files).map((file) => fetch(`${siteApi}/media`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      ownerType: 'listing',
+      ownerId: String(listing.id),
+      fileName: file.name,
+      fileType: file.type || 'application/octet-stream',
+      fileSize: file.size,
+      url: file.type.startsWith('video') ? listing.videoUrl : listing.imageUrl,
+      notes: listing.title,
+    }),
+  }).catch(() => undefined)))
 }
 
 async function saveStorefrontTileToBackend(tile: StorefrontTile) {

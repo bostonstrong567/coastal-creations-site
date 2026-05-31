@@ -30,6 +30,7 @@ type ListingInput = {
   media?: 'photo' | 'video';
   imageClass?: string;
   imageUrl?: string;
+  videoUrl?: string;
   description?: string;
   status?: string;
 };
@@ -136,8 +137,8 @@ async function handleApi(request: Request, env: Env, url: URL) {
     if (url.pathname === '/api/listings' && request.method === 'PUT') {
       const listing = sanitizeListing(await request.json());
       await env.DB.prepare(`
-        INSERT INTO listings (id, title, category, price, price_label, tag, media, image_class, image_url, description, status, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        INSERT INTO listings (id, title, category, price, price_label, tag, media, image_class, image_url, video_url, description, status, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(id) DO UPDATE SET
           title = excluded.title,
           category = excluded.category,
@@ -147,6 +148,7 @@ async function handleApi(request: Request, env: Env, url: URL) {
           media = excluded.media,
           image_class = excluded.image_class,
           image_url = excluded.image_url,
+          video_url = excluded.video_url,
           description = excluded.description,
           status = excluded.status,
           updated_at = CURRENT_TIMESTAMP
@@ -160,6 +162,7 @@ async function handleApi(request: Request, env: Env, url: URL) {
         listing.media ?? 'photo',
         listing.imageClass ?? '',
         listing.imageUrl ?? null,
+        listing.videoUrl ?? null,
         listing.description ?? null,
         listing.status ?? 'Available',
       ).run();
@@ -271,6 +274,7 @@ function sanitizeListing(input: unknown): ListingInput {
     media: value.media === 'video' ? 'video' : 'photo',
     imageClass: value.imageClass?.trim(),
     imageUrl: value.imageUrl?.trim(),
+    videoUrl: value.videoUrl?.trim(),
     description: value.description?.trim(),
     status: value.status?.trim() || 'Available',
   };
@@ -333,6 +337,7 @@ function mapListingRow(row: Record<string, unknown>) {
     media: row.media,
     imageClass: row.image_class,
     imageUrl: row.image_url,
+    videoUrl: row.video_url,
     description: row.description,
     status: row.status,
   };
