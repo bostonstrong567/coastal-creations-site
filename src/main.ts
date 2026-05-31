@@ -4,6 +4,7 @@ import productGridUrl from './assets/product-grid.png'
 
 const contactEmail = 'mjcoastalcreations@gmail.com'
 const chimeApi = '/chime-api'
+const siteApi = '/api'
 const adminUsername = 'mjbussey'
 const adminPasswordHash = '160816406f40159d0c1a6aeb1cdf51e4ee1552ec0451f960c57f1826aa3b6139'
 const adminSessionKey = 'mjcc-admin-authenticated'
@@ -268,6 +269,7 @@ let adminLoginError = ''
 let adminTab: AdminTab = 'storefront'
 let editingListingId: number | null = null
 let adminNotice = ''
+let backendStateLoaded = false
 
 products.forEach((product) => {
   product.status ??= 'Available'
@@ -469,23 +471,27 @@ function storefrontMarkup() {
             <span>Gift inspiration uploads</span>
           </div>
         </div>
-        <form class="request-form">
+        <form class="request-form" data-custom-request-form>
           <label>
             Name
-            <input value="Sample Customer" />
+            <input name="name" value="Sample Customer" required />
           </label>
           <label>
             Email for receipt and updates
-            <input type="email" value="customer@email.com" />
+            <input name="email" type="email" value="customer@email.com" required />
           </label>
           <label>
             What would you like made?
-            <select>
+            <select name="requestType">
               <option>Design your own wind chime</option>
               <option>Custom earrings</option>
               <option>Christmas ornament set</option>
               <option>Special coastal gift</option>
             </select>
+          </label>
+          <label>
+            Idea, colors, budget, or date needed
+            <textarea name="message" required>I would like something beachy and handmade.</textarea>
           </label>
           <label>
             Inspiration photos
@@ -494,7 +500,7 @@ function storefrontMarkup() {
           <div class="upload-preview" data-preview-target>
             <span>Photo and video previews will appear here.</span>
           </div>
-          <button type="button" class="primary-action full">Send Custom Request</button>
+          <button type="submit" class="primary-action full">Send Custom Request</button>
           <a class="email-link" href="mailto:${contactEmail}?subject=Custom%20Gift%20Request">Email ${contactEmail}</a>
         </form>
       </section>
@@ -1038,6 +1044,11 @@ function attachEvents() {
     })
   })
 
+  document.querySelector<HTMLFormElement>('[data-custom-request-form]')?.addEventListener('submit', (event) => {
+    event.preventDefault()
+    void submitCustomRequest(event.currentTarget as HTMLFormElement)
+  })
+
   document.querySelector<HTMLFormElement>('[data-admin-login-form]')?.addEventListener('submit', (event) => {
     event.preventDefault()
     void handleAdminLogin(event.currentTarget as HTMLFormElement)
@@ -1087,6 +1098,7 @@ function attachEvents() {
       if (listing && status) {
         listing.status = status
         saveListingEdits()
+        void saveListingToBackend(listing)
         adminNotice = `${listing.title} is now ${status}.`
         render()
       }
@@ -1105,6 +1117,7 @@ function attachEvents() {
       tile.media = String(formData.get('media') ?? tile.media) === 'video' ? 'video' : 'photo'
       tile.imageUrl = imageUrl || undefined
       saveStorefrontTiles()
+      void saveStorefrontTileToBackend(tile)
       adminNotice = `${tile.title} storefront card was saved for this preview.`
       render()
     })
@@ -1133,6 +1146,7 @@ function attachEvents() {
     }
 
     saveListingEdits()
+    void saveListingToBackend(listing)
     editingListingId = null
     adminNotice = `${listing.title} was saved.`
     render()
@@ -1181,6 +1195,7 @@ function attachEvents() {
 
 window.addEventListener('hashchange', render)
 render()
+void loadBackendState()
 
 function isAdminAuthenticated() {
   return sessionStorage.getItem(adminSessionKey) === 'true'
@@ -1217,23 +1232,26 @@ function loadStoredListingEdits() {
     const raw = localStorage.getItem(listingStorageKey)
     if (!raw) return
 
-    const edits = JSON.parse(raw) as StoredProductEdit[]
-    edits.forEach((edit) => {
-      if (typeof edit.id !== 'number') return
-      const product = products.find((item) => item.id === edit.id)
-      if (!product) return
-
-      if (typeof edit.title === 'string') product.title = edit.title
-      if (typeof edit.category === 'string') product.category = edit.category
-      if (typeof edit.price === 'number') product.price = edit.price
-      if (edit.price === null) product.price = undefined
-      if (typeof edit.priceLabel === 'string') product.priceLabel = edit.priceLabel
-      if (typeof edit.description === 'string') product.description = edit.description
-      if (typeof edit.status === 'string') product.status = edit.status as ListingStatus
-    })
+    applyListingEdits(JSON.parse(raw) as StoredProductEdit[])
   } catch {
     localStorage.removeItem(listingStorageKey)
   }
+}
+
+function applyListingEdits(edits: StoredProductEdit[]) {
+  edits.forEach((edit) => {
+    if (typeof edit.id !== 'number') return
+    const product = products.find((item) => item.id === edit.id)
+    if (!product) return
+
+    if (typeof edit.title === 'string') product.title = edit.title
+    if (typeof edit.category === 'string') product.category = edit.category
+    if (typeof edit.price === 'number') product.price = edit.price
+    if (edit.price === null) product.price = undefined
+    if (typeof edit.priceLabel === 'string') product.priceLabel = edit.priceLabel
+    if (typeof edit.description === 'string') product.description = edit.description
+    if (typeof edit.status === 'string') product.status = edit.status as ListingStatus
+  })
 }
 
 function saveListingEdits() {
@@ -1271,6 +1289,120 @@ function loadStoredStorefrontTiles() {
 
 function saveStorefrontTiles() {
   localStorage.setItem(storefrontStorageKey, JSON.stringify(storefrontTiles))
+}
+
+async function loadBackendState() {
+  if (backendStateLoaded) return
+  backendStateLoaded = true
+
+  try {
+    const [listingResponse, storefrontResponse] = await Promise.all([
+      fetch(`${siteApi}/listings`),
+      fetch(`${siteApi}/storefront`),
+    ])
+
+    if (listingResponse.ok) {
+      const data = await listingResponse.json() as { listings?: StoredProductEdit[] }
+      if (data.listings?.length) {
+        applyListingEdits(data.listings)
+        saveListingEdits()
+      }
+    }
+
+    if (storefrontResponse.ok) {
+      const data = await storefrontResponse.json() as { tiles?: StorefrontTile[] }
+      if (data.tiles?.length) {
+        data.tiles.forEach((edit) => {
+          const tile = storefrontTiles.find((item) => item.id === edit.id)
+          if (!tile) return
+          tile.title = edit.title || tile.title
+          tile.media = edit.media === 'video' ? 'video' : 'photo'
+          tile.imageClass = edit.imageClass || tile.imageClass
+          tile.imageUrl = edit.imageUrl || undefined
+        })
+        saveStorefrontTiles()
+      }
+    }
+
+    render()
+  } catch {
+    // D1 is optional locally; localStorage keeps the admin preview usable.
+  }
+}
+
+async function saveListingToBackend(listing: Product) {
+  try {
+    await fetch(`${siteApi}/listings`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: listing.id,
+        title: listing.title,
+        category: listing.category,
+        price: listing.price ?? null,
+        priceLabel: listing.priceLabel,
+        tag: listing.tag,
+        media: listing.media,
+        imageClass: listing.imageClass,
+        imageUrl: listing.imageUrl,
+        description: listing.description,
+        status: listing.status,
+      }),
+    })
+  } catch {
+    // Local browser save already happened.
+  }
+}
+
+async function saveStorefrontTileToBackend(tile: StorefrontTile) {
+  try {
+    await fetch(`${siteApi}/storefront`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(tile),
+    })
+  } catch {
+    // Local browser save already happened.
+  }
+}
+
+async function submitCustomRequest(form: HTMLFormElement) {
+  const formData = new FormData(form)
+  const files = Array.from(form.querySelector<HTMLInputElement>('[data-upload-preview]')?.files ?? [])
+  const payload = {
+    name: String(formData.get('name') ?? '').trim(),
+    email: String(formData.get('email') ?? '').trim(),
+    requestType: String(formData.get('requestType') ?? '').trim(),
+    message: String(formData.get('message') ?? '').trim(),
+  }
+
+  try {
+    const response = await fetch(`${siteApi}/customer-requests`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!response.ok) throw new Error('request save failed')
+
+    await Promise.all(files.map((file) => fetch(`${siteApi}/media`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ownerType: 'custom-request',
+        ownerId: payload.email,
+        fileName: file.name,
+        fileType: file.type || 'application/octet-stream',
+        fileSize: file.size,
+        notes: payload.requestType,
+      }),
+    })))
+
+    form.querySelector('[data-preview-target]')!.innerHTML = '<span>Request saved. Mary Jean will receive it in the admin database.</span>'
+  } catch {
+    const subject = encodeURIComponent(`Custom Gift Request from ${payload.name || 'customer'}`)
+    const body = encodeURIComponent(`${payload.message}\n\nEmail: ${payload.email}\nType: ${payload.requestType}`)
+    window.location.href = `mailto:${contactEmail}?subject=${subject}&body=${body}`
+  }
 }
 
 async function loadChimes() {

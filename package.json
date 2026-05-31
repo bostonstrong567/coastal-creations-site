@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "npm run build && wrangler dev",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy",
+    "db:create": "wrangler d1 create coastal-creations-db",
+    "db:migrate": "wrangler d1 migrations apply coastal-creations-db --remote"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.39.0",
