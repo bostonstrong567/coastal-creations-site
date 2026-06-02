@@ -11,5 +11,12 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application"
-  }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "coastal-creations-db",
+      "database_id": "9e6c218e-f8b1-42b0-af9f-31c73f300111"
+    }
+  ]
 }
