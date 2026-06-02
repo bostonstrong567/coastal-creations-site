@@ -97,6 +97,7 @@ const shellVision = {
   generating: false,
   error: '',
   resultUrl: '',
+  resultShareUrl: '',
   resultPrompt: '',
   qc: '',
 }
@@ -273,6 +274,7 @@ let editingListingId: number | null = null
 let adminNotice = ''
 let backendStateLoaded = false
 const productMediaIndex = new Map<number, number>()
+const pendingListingFiles = new Map<number, File[]>()
 
 products.forEach((product) => {
   product.status ??= 'Available'
@@ -1067,7 +1069,7 @@ function shellVisionMarkup(isPage = false) {
           <button type="button" class="primary-action full generate-button" data-generate-shell ${shellVision.generating ? 'disabled' : ''}>
             ${shellVision.generating ? 'Creating preview card...' : 'Generate Shell Vision Preview'}
           </button>
-          <p class="creator-note">Generation can take 30-90 seconds, longer after a cold start. This uses the live Coastal Creations builder API and never exposes the admin key.</p>
+          <p class="creator-note">Generation can take a few minutes while Shell Vision creates and checks the preview.</p>
           ${shellVision.error ? `<div class="creator-error">${escapeHtml(shellVision.error)}</div>` : ''}
         </div>
 
@@ -1077,6 +1079,13 @@ function shellVisionMarkup(isPage = false) {
             ? `<img src="${shellVision.resultUrl}" alt="Generated Shell Vision preview card" />`
             : `<div class="empty-preview"><strong>Your Shell Vision card will appear here.</strong><span>Pick materials, polish the wording, then generate a preview.</span></div>`
           }
+          ${shellVision.resultUrl ? `
+            <div class="preview-actions">
+              <a class="secondary-action" href="${shellVision.resultUrl}" download="mary-jeans-shell-vision.png">Save Image</a>
+              ${shellVision.resultShareUrl ? `<a class="secondary-action" href="${shellVision.resultShareUrl}" target="_blank" rel="noreferrer">Open Share Link</a>` : ''}
+              <button type="button" class="secondary-action" data-copy-shell-result>Copy Link</button>
+            </div>
+          ` : ''}
           ${shellVision.qc ? `<p class="qc-note">${escapeHtml(shellVision.qc)}</p>` : ''}
           ${shellVision.resultPrompt ? `<details><summary>Generated prompt</summary><p>${escapeHtml(shellVision.resultPrompt)}</p></details>` : ''}
         </div>
@@ -1096,6 +1105,7 @@ function chimeGridMarkup() {
 
   return shellVision.chimes.map((chime) => `
     <button type="button" class="chime-pick ${shellVision.picks.includes(chime.id) ? 'selected' : ''}" data-chime-id="${chime.id}">
+      <span class="chime-check" aria-hidden="true">✓</span>
       <img src="${chime.image_url}" alt="${escapeHtml(chime.name)}" />
       <strong>${escapeHtml(chime.name)}</strong>
       <span>${escapeHtml(chime.description ?? 'Beach-found coastal material')}</span>
@@ -1324,11 +1334,13 @@ function attachEvents() {
       listing.priceLabel = 'Price TBD'
     }
 
-    saveListingEdits()
+    const savedLocally = saveListingEdits()
     void saveListingToBackend(listing)
     void saveListingMediaToBackend(listing, form.querySelector<HTMLInputElement>('[data-listing-media-upload]')?.files)
     editingListingId = null
-    adminNotice = `${listing.title} was saved.`
+    if (savedLocally) {
+      adminNotice = `${listing.title} was saved.`
+    }
     render()
   })
 
@@ -1366,6 +1378,18 @@ function attachEvents() {
 
   document.querySelector<HTMLButtonElement>('[data-generate-shell]')?.addEventListener('click', () => {
     void generateShellVision()
+  })
+
+  document.querySelector<HTMLButtonElement>('[data-copy-shell-result]')?.addEventListener('click', async () => {
+    const url = shellVision.resultShareUrl || shellVision.resultUrl
+    if (!url) return
+    try {
+      await navigator.clipboard.writeText(url)
+      shellVision.qc = shellVision.qc ? `${shellVision.qc} Link copied.` : 'Link copied.'
+    } catch {
+      shellVision.error = 'Could not copy the link. Use Open Share Link instead.'
+    }
+    render()
   })
 
   if (!shellVision.chimesLoaded && !shellVision.loadingChimes) {
@@ -1450,7 +1474,13 @@ function saveListingEdits() {
     description: product.description,
     status: product.status,
   }))
-  localStorage.setItem(listingStorageKey, JSON.stringify(edits))
+  try {
+    localStorage.setItem(listingStorageKey, JSON.stringify(edits))
+    return true
+  } catch {
+    adminNotice = 'That photo or video is too large for browser-only saving. Use a smaller clip, or enable Cloudflare R2 for permanent uploads.'
+    return false
+  }
 }
 
 function loadStoredStorefrontTiles() {
@@ -1565,6 +1595,10 @@ async function handleUploadPreview(input: HTMLInputElement) {
   const target = form?.querySelector<HTMLElement>('[data-preview-target]')
   const files = Array.from(input.files ?? [])
   if (!target || !files.length) return
+  const listingId = Number(input.dataset.listingMediaUpload)
+  if (listingId) {
+    pendingListingFiles.set(listingId, files)
+  }
 
   target.innerHTML = files
     .slice(0, 8)
@@ -1583,20 +1617,30 @@ async function handleUploadPreview(input: HTMLInputElement) {
     })
     .join('')
 
-  const listingId = input.dataset.listingMediaUpload
-  if (!listingId || !form) return
+  const listingIdText = input.dataset.listingMediaUpload
+  if (!listingIdText || !form) return
 
   target.insertAdjacentHTML('beforeend', '<span class="upload-status">Uploading files...</span>')
-  const result = await uploadListingFiles(listingId, files)
+  const result = await uploadListingFiles(listingIdText, files)
   target.querySelector('.upload-status')?.remove()
 
   if (!result.ok || !result.files.length) {
-    target.insertAdjacentHTML('beforeend', '<span class="upload-status">Preview ready. Permanent storage still needs Cloudflare R2 connected.</span>')
+    const localFiles = await filesToLocalMedia(files)
+    applyUploadedMediaToForm(form, localFiles)
+    target.insertAdjacentHTML('beforeend', '<span class="upload-status">Saved locally in this browser. Connect Cloudflare R2 later for permanent website-wide file storage.</span>')
     return
   }
 
-  const image = result.files.find((file) => file.ok && file.fileType.startsWith('image/'))
-  const video = result.files.find((file) => file.ok && file.fileType.startsWith('video/'))
+  applyUploadedMediaToForm(form, result.files.filter((file) => file.ok && file.url).map((file) => ({
+    url: file.url!,
+    fileType: file.fileType,
+  })))
+  target.insertAdjacentHTML('beforeend', '<span class="upload-status">Upload complete. Save the listing to publish these files.</span>')
+}
+
+function applyUploadedMediaToForm(form: Element, files: Array<{ url: string; fileType: string }>) {
+  const image = files.find((file) => file.fileType.startsWith('image/'))
+  const video = files.find((file) => file.fileType.startsWith('video/'))
   const imageInput = form.querySelector<HTMLInputElement>('input[name="imageUrl"]')
   const videoInput = form.querySelector<HTMLInputElement>('input[name="videoUrl"]')
 
@@ -1605,12 +1649,25 @@ async function handleUploadPreview(input: HTMLInputElement) {
   const galleryInput = form.querySelector<HTMLTextAreaElement>('textarea[name="galleryUrls"]')
   if (galleryInput) {
     const existing = parseGalleryUrls(galleryInput.value)
-    const uploadedUrls = result.files
-      .filter((file) => file.ok && file.url)
-      .map((file) => file.url!)
+    const uploadedUrls = files.map((file) => file.url)
     galleryInput.value = Array.from(new Set([...existing, ...uploadedUrls])).join('\n')
   }
-  target.insertAdjacentHTML('beforeend', '<span class="upload-status">Upload complete. Save the listing to publish these files.</span>')
+}
+
+async function filesToLocalMedia(files: File[]) {
+  return Promise.all(files.slice(0, 8).map(async (file) => ({
+    url: await fileToDataUrl(file),
+    fileType: file.type || 'application/octet-stream',
+  })))
+}
+
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.addEventListener('load', () => resolve(String(reader.result ?? '')))
+    reader.addEventListener('error', () => reject(reader.error))
+    reader.readAsDataURL(file)
+  })
 }
 
 function parseGalleryUrls(value: string) {
@@ -1789,12 +1846,13 @@ async function generateShellVision() {
   shellVision.generating = true
   shellVision.error = ''
   shellVision.resultUrl = ''
+  shellVision.resultShareUrl = ''
   shellVision.resultPrompt = ''
-  shellVision.qc = ''
+  shellVision.qc = 'Generating can take a few minutes while the AI makes and checks the image.'
   render()
 
   const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 180_000)
+  const timeout = window.setTimeout(() => controller.abort(), 300_000)
 
   try {
     const response = await fetch(`${chimeApi}/api/generate`, {
@@ -1817,12 +1875,15 @@ async function generateShellVision() {
     }
 
     shellVision.resultUrl = data.b64 ? `data:image/png;base64,${data.b64}` : data.result_url ?? ''
+    shellVision.resultShareUrl = data.result_url ?? ''
     shellVision.resultPrompt = data.prompt ?? ''
     shellVision.qc = data.qc
       ? `Vision score ${data.qc.score ?? 'n/a'} after ${data.qc.attempts ?? 'n/a'} attempt(s). ${(data.qc.issues ?? []).join(', ')}`
       : ''
   } catch (error) {
-    shellVision.error = error instanceof Error ? error.message : 'Unable to generate Shell Vision preview.'
+    shellVision.error = error instanceof DOMException && error.name === 'AbortError'
+      ? 'Shell Vision took too long this time. Try again in a minute; the image service may still be warming up.'
+      : error instanceof Error ? error.message : 'Unable to generate Shell Vision preview.'
   } finally {
     window.clearTimeout(timeout)
     shellVision.generating = false

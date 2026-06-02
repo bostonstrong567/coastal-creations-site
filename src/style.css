@@ -656,9 +656,24 @@ textarea {
 
 .shell-vision-builder {
   display: grid;
-  grid-template-columns: minmax(19rem, 0.9fr) minmax(22rem, 1fr) minmax(20rem, 0.88fr);
+  grid-template-columns: minmax(19rem, 0.9fr) minmax(20rem, 0.78fr);
+  grid-template-areas:
+    "form preview"
+    "materials materials";
   gap: 1rem;
   align-items: start;
+}
+
+.shell-vision-builder > .creator-panel:first-child {
+  grid-area: form;
+}
+
+.shell-vision-builder > .creator-panel:nth-child(2) {
+  grid-area: materials;
+}
+
+.shell-vision-builder > .creator-result {
+  grid-area: preview;
 }
 
 .creator-panel,
@@ -719,23 +734,32 @@ textarea {
 
 .chime-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-  max-height: 35rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+  max-height: 42rem;
   overflow: auto;
-  padding-right: 0.2rem;
+  padding: 0.15rem 0.25rem 0.25rem 0;
 }
 
 .chime-pick {
+  position: relative;
   display: grid;
   gap: 0.5rem;
   min-height: 0;
-  padding: 0.55rem;
+  padding: 0.65rem;
   color: var(--teal-dark);
   background: white;
-  border: 2px solid transparent;
+  border: 1px solid var(--line);
   border-radius: 7px;
+  box-shadow: 0 10px 22px rgba(18, 55, 63, 0.08);
   text-align: left;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.chime-pick:hover {
+  border-color: rgba(15, 78, 92, 0.45);
+  box-shadow: 0 14px 28px rgba(18, 55, 63, 0.12);
+  transform: translateY(-1px);
 }
 
 .chime-pick.selected {
@@ -743,9 +767,33 @@ textarea {
   background: rgba(159, 200, 193, 0.18);
 }
 
+.chime-check {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.65rem;
+  z-index: 1;
+  display: grid;
+  width: 1.8rem;
+  height: 1.8rem;
+  place-items: center;
+  color: white;
+  background: rgba(15, 78, 92, 0.42);
+  border: 2px solid white;
+  border-radius: 999px;
+  box-shadow: 0 6px 14px rgba(18, 55, 63, 0.18);
+  font-size: 1rem;
+  font-weight: 900;
+  opacity: 0.45;
+}
+
+.chime-pick.selected .chime-check {
+  background: var(--teal);
+  opacity: 1;
+}
+
 .chime-pick img {
   width: 100%;
-  aspect-ratio: 1;
+  aspect-ratio: 4 / 3;
   object-fit: cover;
   border-radius: 5px;
 }
@@ -781,6 +829,17 @@ textarea {
   border: 1px solid rgba(122, 48, 39, 0.2);
   border-radius: 6px;
   font-weight: 800;
+}
+
+.preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.preview-actions .secondary-action {
+  min-height: 2.65rem;
+  padding: 0.72rem 0.9rem;
 }
 
 .creator-result {
@@ -1390,6 +1449,14 @@ textarea {
 
   .shell-vision-builder {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "form"
+      "materials"
+      "preview";
+  }
+
+  .chime-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .shell-vision-intro {
