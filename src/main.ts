@@ -1797,7 +1797,7 @@ async function loadChimes() {
   render()
 
   try {
-    const response = await fetch(`${chimeApi}/api/chimes`)
+    const response = await fetch(`${siteApi}/shell-materials`)
     if (!response.ok) throw new Error(`Catalog failed: ${response.status}`)
     const data = await response.json() as { chimes: Chime[] }
     shellVision.chimes = data.chimes
@@ -1855,7 +1855,7 @@ async function generateShellVision() {
   const timeout = window.setTimeout(() => controller.abort(), 300_000)
 
   try {
-    const response = await fetch(`${chimeApi}/api/generate`, {
+    const response = await fetch(`${siteApi}/shell-generate`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ ...shellVisionPayload(), return_b64: true }),

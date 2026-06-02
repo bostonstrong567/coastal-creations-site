@@ -75,10 +75,33 @@ type MediaInput = {
   notes?: string;
 };
 
+type ShellMaterial = {
+  id: number;
+  name: string;
+  description?: string | null;
+  image_url: string;
+  source_file?: string | null;
+};
+
 const jsonHeaders = {
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'no-store',
 };
+
+const staticShellMaterials: ShellMaterial[] = [
+  { id: 1, name: 'Natural Driftwood Pieces', description: 'Pale natural driftwood pieces for wind chime frames, hangers, and coastal accents.', image_url: '/materials/natural-driftwood-pieces.jpg', source_file: 'natural-driftwood-pieces.jpg' },
+  { id: 2, name: 'Smooth Driftwood Sticks', description: 'Smooth weathered driftwood sticks in soft beige and tan tones.', image_url: '/materials/smooth-driftwood-sticks.jpg', source_file: 'smooth-driftwood-sticks.jpg' },
+  { id: 3, name: 'White Clam Shell', description: 'Large white clam shell with soft tan markings and a smooth interior.', image_url: '/materials/white-clam-shell.jpg', source_file: 'white-clam-shell.jpg' },
+  { id: 4, name: 'Green Sea Glass', description: 'Rounded frosted green sea glass pieces for soft coastal color.', image_url: '/materials/green-sea-glass.png', source_file: 'green-sea-glass.png' },
+  { id: 5, name: 'Coastal Accent Shells', description: 'Small coastal accent shells for delicate handmade details.', image_url: '/materials/coastal-accent-shells.jpg', source_file: 'coastal-accent-shells.jpg' },
+  { id: 6, name: 'White Starfish Accent', description: 'White starfish accent for seaside ornaments, chimes, and keepsakes.', image_url: '/materials/white-starfish-accent.jpg', source_file: 'white-starfish-accent.jpg' },
+  { id: 7, name: 'Large White Starfish', description: 'Large white starfish with textured arms for statement coastal pieces.', image_url: '/materials/large-white-starfish.jpg', source_file: 'large-white-starfish.jpg' },
+  { id: 8, name: 'Small White Starfish', description: 'Small white starfish accents for lightweight coastal designs.', image_url: '/materials/small-white-starfish.jpg', source_file: 'small-white-starfish.jpg' },
+  { id: 9, name: 'Sand Dollar', description: 'White sand dollar accent with a classic beach-found look.', image_url: '/materials/sand-dollar.jpg', source_file: 'sand-dollar.jpg' },
+  { id: 10, name: 'Blue Sea Glass', description: 'Bright frosted blue sea glass pieces for bold ocean color.', image_url: '/materials/blue-sea-glass.jpg', source_file: 'blue-sea-glass.jpg' },
+  { id: 11, name: 'Clear Sea Glass', description: 'Frosted clear sea glass pieces with soft translucent shine.', image_url: '/materials/clear-sea-glass.jpg', source_file: 'clear-sea-glass.jpg' },
+  { id: 12, name: 'Brown Sea Glass', description: 'Warm amber and brown sea glass pieces for natural beach tones.', image_url: '/materials/brown-sea-glass.jpg', source_file: 'brown-sea-glass.jpg' },
+];
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -137,6 +160,10 @@ async function handleApi(request: Request, env: Env, url: URL) {
     return uploadShellVisionMaterials(request, env);
   }
 
+  if (url.pathname === '/api/shell-generate' && request.method === 'POST') {
+    return generateShellVisionCard(request, env, url);
+  }
+
   if (url.pathname === '/api/uploads' && request.method === 'POST') {
     return uploadMediaFiles(request, env, url);
   }
@@ -152,6 +179,11 @@ async function handleApi(request: Request, env: Env, url: URL) {
   try {
     if (url.pathname === '/api/health') {
       return json({ ok: true, database: true });
+    }
+
+    if (url.pathname === '/api/shell-materials' && request.method === 'GET') {
+      const { results = [] } = await env.DB.prepare('SELECT * FROM shell_materials ORDER BY id').all();
+      return json({ ok: true, chimes: results.map(mapShellMaterialRow) });
     }
 
     if (url.pathname === '/api/listings' && request.method === 'GET') {
@@ -279,6 +311,10 @@ async function databaseNotConfigured(request: Request, url: URL) {
     return json({ ok: true, database: false, media: [] });
   }
 
+  if (url.pathname === '/api/shell-materials' && request.method === 'GET') {
+    return json({ ok: true, database: false, chimes: staticShellMaterials });
+  }
+
   if (['POST', 'PUT'].includes(request.method)) {
     return json({ ok: false, database: false, saved: false, error: 'database not configured' });
   }
@@ -325,6 +361,103 @@ async function uploadShellVisionMaterials(request: Request, env: Env) {
     body = { ok: false, error: text || 'Shell Vision upload failed.' };
   }
 
+  if (response.ok && env.DB && typeof body === 'object' && body && Array.isArray((body as { created?: unknown[] }).created)) {
+    for (const item of (body as { created: Array<Record<string, unknown>> }).created) {
+      const name = String(item.name ?? 'Shell Vision Material');
+      const imageUrl = String(item.image_url ?? '');
+      if (!imageUrl) continue;
+      await env.DB.prepare(`
+        INSERT INTO shell_materials (name, description, image_url, source_file, updated_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `).bind(name, null, imageUrl, String(item.image_path ?? '')).run();
+    }
+  }
+
+  return json(body, response.status);
+}
+
+async function generateShellVisionCard(request: Request, env: Env, url: URL) {
+  if (!env.CHIME_ADMIN_KEY) {
+    return json({ ok: false, error: 'Shell Vision is not ready. The admin upload key is missing.' }, 501);
+  }
+
+  const body = await request.json() as Record<string, unknown>;
+  const picks = Array.isArray(body.picks) ? body.picks.map(Number).filter(Number.isFinite) : [];
+  if (!picks.length) {
+    return json({ ok: false, error: 'Choose at least one material.' }, 400);
+  }
+
+  const materials = await loadSelectedShellMaterials(env, picks);
+  if (!materials.length) {
+    return json({ ok: false, error: 'The selected materials are not saved yet. Refresh materials and try again.' }, 400);
+  }
+
+  const syncedIds = await syncMaterialsToChimeBuilder(env, url, materials);
+  const upstream = await fetch(`${CHIME_API}/api/generate`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ...body, picks: syncedIds, return_b64: body.return_b64 ?? true }),
+  });
+
+  return proxyJsonResponse(upstream);
+}
+
+async function loadSelectedShellMaterials(env: Env, picks: number[]) {
+  if (!env.DB) {
+    return staticShellMaterials.filter((material) => picks.includes(material.id));
+  }
+
+  const placeholders = picks.map(() => '?').join(',');
+  const { results = [] } = await env.DB.prepare(`SELECT * FROM shell_materials WHERE id IN (${placeholders}) ORDER BY id`).bind(...picks).all();
+  const materials = results.map(mapShellMaterialRow);
+  return materials.length ? materials : staticShellMaterials.filter((material) => picks.includes(material.id));
+}
+
+async function syncMaterialsToChimeBuilder(env: Env, url: URL, materials: ShellMaterial[]) {
+  const outgoing = new FormData();
+
+  for (const material of materials.slice(0, 8)) {
+    const materialUrl = new URL(material.image_url, url.origin);
+    const response = await fetch(materialUrl.toString());
+    if (!response.ok) throw new Error(`Could not read saved material: ${material.name}`);
+    const blob = await response.blob();
+    const fileName = material.source_file || safeFileName(`${material.name}.jpg`);
+    outgoing.append('images', blob, fileName);
+    outgoing.append('names', material.name);
+  }
+
+  const response = await fetch(`${CHIME_API}/api/chimes`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${env.CHIME_ADMIN_KEY}`,
+      'X-Admin-Key': env.CHIME_ADMIN_KEY,
+    },
+    body: outgoing,
+  });
+
+  const text = await response.text();
+  let data: { created?: Array<{ id?: number }>; error?: string };
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(text || 'Material sync failed.');
+  }
+
+  if (!response.ok || !data.created?.length) {
+    throw new Error(data.error || 'Material sync failed.');
+  }
+
+  return data.created.map((item) => Number(item.id)).filter(Number.isFinite);
+}
+
+async function proxyJsonResponse(response: Response) {
+  const text = await response.text();
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = { ok: false, error: text || 'Shell Vision failed.' };
+  }
   return json(body, response.status);
 }
 
@@ -501,6 +634,16 @@ function mapStorefrontRow(row: Record<string, unknown>) {
     media: row.media,
     imageClass: row.image_class,
     imageUrl: row.image_url,
+  };
+}
+
+function mapShellMaterialRow(row: Record<string, unknown>): ShellMaterial {
+  return {
+    id: Number(row.id),
+    name: String(row.name ?? 'Shell Vision Material'),
+    description: typeof row.description === 'string' ? row.description : null,
+    image_url: String(row.image_url ?? ''),
+    source_file: typeof row.source_file === 'string' ? row.source_file : null,
   };
 }
 
