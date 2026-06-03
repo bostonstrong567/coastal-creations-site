@@ -409,7 +409,7 @@ function render() {
     </main>
 
     <dialog class="cart-dialog" data-cart-dialog>
-      <form method="dialog">
+      <form method="dialog" data-cart-order-form>
         <div class="dialog-head">
           <h2>Cart & Order Request</h2>
           <button aria-label="Close cart">Close</button>
@@ -526,7 +526,7 @@ function categoryRailMarkup(activeSlug = '') {
 }
 
 function categoryGuideCard(category: typeof categories[number]) {
-  const count = products.filter((product) => product.category === category.category).length
+  const count = products.filter((product) => product.category === category.category && isPublicListing(product)).length
   return `
     <a class="category-guide-card" href="#category-${category.slug}">
       <span>${escapeHtml(category.label)}</span>
@@ -551,7 +551,7 @@ function categoryPageMarkup(slug: string) {
     return storefrontMarkup()
   }
 
-  const listings = products.filter((product) => product.category === category.category)
+  const listings = products.filter((product) => product.category === category.category && isPublicListing(product))
 
   return `
     ${categoryRailMarkup(category.slug)}
@@ -595,6 +595,10 @@ function categoryDescription(label: string) {
   }
 
   return 'Browse the current handmade coastal collection.'
+}
+
+function isPublicListing(product: Product) {
+  return !['Sold', 'Hidden', 'Draft'].includes(product.status ?? 'Available')
 }
 
 function adminLoginMarkup() {
@@ -731,6 +735,35 @@ function adminAddListingMarkup() {
           <label>Status<select name="status"><option>Available</option><option>Draft</option><option>Sold</option><option>Hidden</option></select></label>
         </div>
         <label class="admin-description">Description<textarea name="description">Handmade from beach-found shells, sea glass, and driftwood tones.</textarea></label>
+        <div class="ai-card-maker">
+          <div>
+            <strong>AI Listing Card Maker</strong>
+            <span>Upload the original photo, choose a card style, then make a polished Mary Jean product card.</span>
+          </div>
+          <div class="admin-form-grid">
+            <label>Card style<select name="cardStyle">
+              <option value="auto">Auto beach card</option>
+              <option value="angel">Angel Wings</option>
+              <option value="flipflop">Flip Flop</option>
+              <option value="rose">Coastal Rose</option>
+              <option value="treasure">Shell Treasures</option>
+            </select></label>
+            <label>Photo fit<select name="imageFit">
+              <option value="fit-cover">Fill card</option>
+              <option value="fit-contain">Show whole photo</option>
+            </select></label>
+            <label>Product photo size<select name="cardPhotoSize">
+              <option value="medium">Medium</option>
+              <option value="large" selected>Large</option>
+              <option value="xlarge">Extra large</option>
+            </select></label>
+          </div>
+          <button type="button" class="secondary-action" data-generate-listing-card>Create AI Listing Card</button>
+          <input type="hidden" name="generatedCardUrl" />
+          <div class="upload-preview ai-card-preview" data-ai-card-preview>
+            <span>Generated card preview will appear here.</span>
+          </div>
+        </div>
         <label>Photo URL<input name="imageUrl" placeholder="Optional hosted image URL" /></label>
         <label>Video URL<input name="videoUrl" placeholder="Optional hosted video URL" /></label>
         <label class="admin-description">Gallery URLs<textarea name="galleryUrls" placeholder="Optional extra image or video URLs, one per line"></textarea></label>
@@ -767,7 +800,7 @@ function adminAddListingMarkup() {
 }
 
 function adminListingsMarkup() {
-  const earringListings = products.filter((product) => product.category === 'Earrings')
+  const allListings = [...products].sort((a, b) => b.id - a.id)
   const editingListing = editingListingId ? products.find((product) => product.id === editingListingId) : undefined
 
   if (editingListing) {
@@ -779,15 +812,15 @@ function adminListingsMarkup() {
       <div class="admin-panel-head">
         <div>
           <h3>My Listings</h3>
-          <p class="admin-panel-note">These are the current earring listings from Mary Jean's real inventory images.</p>
+          <p class="admin-panel-note">Every listing is shown here, including drafts, hidden items, sold items, earrings, wind chimes, wreaths, ornaments, and custom gifts.</p>
         </div>
-        <span>${earringListings.length} listings</span>
+        <span>${allListings.length} listings</span>
       </div>
       ${adminNotice ? `<div class="admin-notice">${escapeHtml(adminNotice)}</div>` : ''}
       <div class="admin-listing-grid">
-        ${earringListings.map((listing) => `
+        ${allListings.map((listing) => `
           <article class="admin-listing-card">
-            <img src="${listing.imageUrl}" alt="${escapeHtml(listing.title)}" />
+            ${listing.imageUrl ? `<img src="${listing.imageUrl}" alt="${escapeHtml(listing.title)}" />` : '<div class="empty-preview">No image yet.</div>'}
             <div>
               <p>${escapeHtml(listing.category)}</p>
               <h4>${escapeHtml(listing.title)}</h4>
@@ -830,6 +863,10 @@ function adminEditListingMarkup(listing: Product) {
             <label>Price<input name="price" value="${listing.price ? money(listing.price) : ''}" placeholder="Example: 34.00" /></label>
             <label>Category<select name="category">${['Earrings', 'Wind Chimes', 'Jewelry', 'Wreaths', 'Ornaments', 'Custom Gifts'].map((category) => `<option ${listing.category === category ? 'selected' : ''}>${category}</option>`).join('')}</select></label>
             <label>Status<select name="status">${['Available', 'Sold', 'Hidden', 'Draft'].map((status) => `<option ${listing.status === status ? 'selected' : ''}>${status}</option>`).join('')}</select></label>
+            <label>Photo fit<select name="imageFit">
+              <option value="fit-cover" ${listing.imageClass.includes('fit-contain') ? '' : 'selected'}>Fill card</option>
+              <option value="fit-contain" ${listing.imageClass.includes('fit-contain') ? 'selected' : ''}>Show whole photo</option>
+            </select></label>
             <label>Main photo URL<input name="imageUrl" value="${escapeHtml(imageUrl)}" placeholder="/inventory/12505.png or hosted image URL" /></label>
             <label>Hover video URL<input name="videoUrl" value="${escapeHtml(videoUrl)}" placeholder="Paste a hosted .mp4/.webm URL" /></label>
           </div>
@@ -1220,10 +1257,23 @@ function attachEvents() {
     })
   })
 
+  document.querySelector<HTMLFormElement>('[data-cart-order-form]')?.addEventListener('submit', (event) => {
+    const submitter = (event as SubmitEvent).submitter as HTMLButtonElement | null
+    if (submitter?.value !== 'confirm' || !cart.size) return
+    event.preventDefault()
+    void submitCartOrder(event.currentTarget as HTMLFormElement)
+  })
+
   document.querySelectorAll<HTMLInputElement>('[data-upload-preview]').forEach((input) => {
     input.addEventListener('change', () => {
       void handleUploadPreview(input)
     })
+  })
+
+  document.querySelector<HTMLButtonElement>('[data-generate-listing-card]')?.addEventListener('click', () => {
+    const form = document.querySelector<HTMLFormElement>('[data-admin-add-form]')
+    if (!form) return
+    void generateListingCard(form)
   })
 
   document.querySelectorAll<HTMLElement>('[data-drop-zone]').forEach((dropZone) => {
@@ -1417,6 +1467,7 @@ function attachEvents() {
     listing.videoUrl = String(formData.get('videoUrl') ?? '').trim() || undefined
     listing.galleryUrls = parseGalleryUrls(String(formData.get('galleryUrls') ?? ''))
     listing.media = listing.videoUrl ? 'video' : 'photo'
+    listing.imageClass = `real-inventory ${String(formData.get('imageFit') ?? 'fit-cover')}`
     if (parsedPrice && Number.isFinite(parsedPrice)) {
       listing.price = parsedPrice
       listing.priceLabel = undefined
@@ -1504,6 +1555,7 @@ async function listingFromAddForm(form: HTMLFormElement): Promise<Product> {
   const localMedia = files.length ? await filesToLocalMedia(files) : []
   const imageFromUpload = localMedia.find((file) => file.fileType.startsWith('image/'))?.url
   const videoFromUpload = localMedia.find((file) => file.fileType.startsWith('video/'))?.url
+  const generatedCardUrl = String(formData.get('generatedCardUrl') ?? '').trim()
   const galleryUrls = Array.from(new Set([
     ...parseGalleryUrls(String(formData.get('galleryUrls') ?? '')),
     ...localMedia.map((file) => file.url),
@@ -1518,8 +1570,8 @@ async function listingFromAddForm(form: HTMLFormElement): Promise<Product> {
     priceLabel: parsedPrice && Number.isFinite(parsedPrice) ? undefined : 'Price TBD',
     tag: 'New listing',
     media: videoFromUpload || String(formData.get('videoUrl') ?? '').trim() ? 'video' : 'photo',
-    imageClass: 'real-inventory',
-    imageUrl: imageFromUpload || String(formData.get('imageUrl') ?? '').trim() || undefined,
+    imageClass: `real-inventory ${String(formData.get('imageFit') ?? 'fit-cover')}`,
+    imageUrl: generatedCardUrl || imageFromUpload || String(formData.get('imageUrl') ?? '').trim() || undefined,
     videoUrl: videoFromUpload || String(formData.get('videoUrl') ?? '').trim() || undefined,
     galleryUrls,
     description: String(formData.get('description') ?? '').trim(),
@@ -1549,6 +1601,43 @@ function showListingPreview(listing: Product) {
 
   preview.innerHTML = productCard(listing)
   dialog.showModal()
+}
+
+async function submitCartOrder(form: HTMLFormElement) {
+  const orderedItems = Array.from(cart.entries()).map(([id, qty]) => {
+    const product = products.find((item) => item.id === id)
+    return product ? { product, qty } : undefined
+  }).filter((item): item is { product: Product; qty: number } => Boolean(item))
+
+  if (!orderedItems.length) return
+
+  orderedItems.forEach(({ product }) => {
+    product.status = 'Sold'
+  })
+  saveListingEdits()
+  await Promise.all(orderedItems.map(({ product }) => saveListingToBackend(product)))
+
+  const email = form.querySelector<HTMLInputElement>('input[type="email"]')?.value.trim() || 'customer@email.com'
+  const zip = form.querySelectorAll<HTMLInputElement>('input')[1]?.value.trim() || ''
+  const lines = orderedItems.map(({ product, qty }) => (
+    `${product.title} x ${qty} - ${product.price ? money(product.price * qty) : 'Quote needed'}`
+  ))
+  const subject = encodeURIComponent('Mary Jean Order Request')
+  const body = encodeURIComponent([
+    'New order request:',
+    '',
+    ...lines,
+    '',
+    `Customer email: ${email}`,
+    `Shipping ZIP: ${zip}`,
+    `Subtotal: ${money(cartSubtotal())}`,
+    '',
+    'Inventory note: selected listing(s) were marked Sold in admin.',
+  ].join('\n'))
+
+  cart.clear()
+  render()
+  window.location.href = `mailto:${contactEmail}?subject=${subject}&body=${body}`
 }
 
 async function handleAdminLogin(form: HTMLFormElement) {
@@ -1815,6 +1904,149 @@ function applyUploadedMediaToForm(form: Element, files: Array<{ url: string; fil
     const uploadedUrls = files.map((file) => file.url)
     galleryInput.value = Array.from(new Set([...existing, ...uploadedUrls])).join('\n')
   }
+}
+
+async function generateListingCard(form: HTMLFormElement) {
+  const preview = form.querySelector<HTMLElement>('[data-ai-card-preview]')
+  const hiddenInput = form.querySelector<HTMLInputElement>('input[name="generatedCardUrl"]')
+  const imageUrlInput = form.querySelector<HTMLInputElement>('input[name="imageUrl"]')
+  const titleInput = form.querySelector<HTMLInputElement>('input[name="title"]')
+  const descriptionInput = form.querySelector<HTMLTextAreaElement>('textarea[name="description"]')
+  const categorySelect = form.querySelector<HTMLSelectElement>('select[name="category"]')
+  const file = Array.from(form.querySelector<HTMLInputElement>('[data-new-listing-media]')?.files ?? [])
+    .find((item) => item.type.startsWith('image/'))
+
+  if (!preview || !hiddenInput || !titleInput || !descriptionInput || !categorySelect) return
+  if (!file && !imageUrlInput?.value.trim()) {
+    preview.innerHTML = '<span>Upload a product photo first, then create the AI listing card.</span>'
+    return
+  }
+
+  preview.innerHTML = '<span>Creating branded listing card...</span>'
+
+  try {
+    const cardStyle = String(new FormData(form).get('cardStyle') ?? 'auto')
+    const titleSuggestion = listingTitleSuggestion(titleInput.value, file?.name ?? '', cardStyle)
+    const descriptionSuggestion = listingDescriptionSuggestion(titleSuggestion, categorySelect.value)
+    if (!titleInput.value.trim() || titleInput.value === 'Sea Glass Wind Chime') {
+      titleInput.value = titleSuggestion
+    }
+    if (!descriptionInput.value.trim() || descriptionInput.value.includes('Handmade from beach-found shells')) {
+      descriptionInput.value = descriptionSuggestion
+    }
+
+    const compressedPhoto = file ? await fileToCompressedImageDataUrl(file) : imageUrlInput?.value.trim() ?? ''
+    const cardUrl = buildListingCardSvg({
+      photoUrl: compressedPhoto,
+      title: titleInput.value,
+      category: categorySelect.value,
+      tagline: listingTagline(titleInput.value, cardStyle),
+      description: descriptionInput.value,
+      photoSize: String(new FormData(form).get('cardPhotoSize') ?? 'large'),
+    })
+
+    hiddenInput.value = cardUrl
+    preview.innerHTML = `<img src="${cardUrl}" alt="Generated listing card for ${escapeHtml(titleInput.value)}" />`
+  } catch (error) {
+    preview.innerHTML = `<span>${escapeHtml(error instanceof Error ? error.message : 'Could not create the listing card.')}</span>`
+  }
+}
+
+function listingTitleSuggestion(currentTitle: string, fileName: string, style: string) {
+  const text = `${currentTitle} ${fileName}`.toLowerCase()
+  if (style === 'angel' || text.includes('wing')) return 'Angel Wings'
+  if (style === 'flipflop' || text.includes('flip') || text.includes('12493')) return 'Flip Flop'
+  if (style === 'rose') return 'Coastal Rose'
+  if (style === 'treasure') return 'Shell Treasures'
+  if (text.includes('star')) return 'Ocean Star'
+  if (text.includes('pearl')) return 'Shoreline Pearls'
+  return currentTitle.trim() && currentTitle !== 'Sea Glass Wind Chime' ? currentTitle.trim() : 'Shell Earrings'
+}
+
+function listingTagline(title: string, style: string) {
+  const text = `${title} ${style}`.toLowerCase()
+  if (text.includes('angel') || text.includes('wing')) return 'Wings of the sea.'
+  if (text.includes('flip')) return 'Simple days. Salty vibes.'
+  if (text.includes('rose')) return 'Wear a piece of the ocean.'
+  if (text.includes('treasure')) return 'Treasures from the tides.'
+  return 'Wear a piece of the ocean.'
+}
+
+function listingDescriptionSuggestion(title: string, category: string) {
+  const kind = category === 'Earrings' || category === 'Jewelry' ? 'shell earrings' : category.toLowerCase()
+  return `${title} ${kind} handmade by Mary Jean with beach-found treasures, coastal texture, and gift-ready detail.`
+}
+
+function buildListingCardSvg(input: { photoUrl: string; title: string; category: string; tagline: string; description: string; photoSize: string }) {
+  const categoryLabel = input.category === 'Earrings' || input.category === 'Jewelry' ? 'Shell Earrings' : input.category
+  const title = escapeHtml(input.title).toUpperCase()
+  const tagline = escapeHtml(input.tagline)
+  const description = escapeHtml(input.description)
+  const photoUrl = input.photoUrl
+  const photoBox = input.photoSize === 'xlarge'
+    ? { x: 255, y: 615, width: 690, height: 610 }
+    : input.photoSize === 'medium'
+      ? { x: 350, y: 690, width: 500, height: 420 }
+      : { x: 305, y: 650, width: 590, height: 520 }
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1600" viewBox="0 0 1200 1600">
+      <defs>
+        <linearGradient id="sky" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0" stop-color="#eaf7fb"/>
+          <stop offset="0.42" stop-color="#fffdf8"/>
+          <stop offset="1" stop-color="#f5e2c8"/>
+        </linearGradient>
+      </defs>
+      <rect width="1200" height="1600" fill="url(#sky)"/>
+      <circle cx="205" cy="170" r="130" fill="#fffdf8" stroke="#caa56a" stroke-width="10"/>
+      <text x="205" y="145" text-anchor="middle" font-family="Georgia, serif" font-size="42" font-style="italic" fill="#074757">Mary Jean's</text>
+      <text x="205" y="200" text-anchor="middle" font-family="Georgia, serif" font-size="34" letter-spacing="7" fill="#074757">COASTAL</text>
+      <text x="205" y="240" text-anchor="middle" font-family="Georgia, serif" font-size="23" letter-spacing="6" fill="#074757">CREATIONS</text>
+      <text x="780" y="150" text-anchor="middle" font-family="Georgia, serif" font-size="58" font-weight="700" letter-spacing="5" fill="#073f4b">${title}</text>
+      <text x="780" y="210" text-anchor="middle" font-family="Georgia, serif" font-size="34" letter-spacing="12" fill="#073f4b">${escapeHtml(categoryLabel).toUpperCase()}</text>
+      <text x="780" y="285" text-anchor="middle" font-family="Georgia, serif" font-size="38" font-style="italic" fill="#0f6f7c">${tagline}</text>
+      <text x="780" y="335" text-anchor="middle" font-family="Georgia, serif" font-size="29" fill="#073f4b">Handmade with beach-found treasures.</text>
+      <rect x="255" y="455" width="690" height="780" rx="34" fill="#f7eddf" stroke="#e6d8bf" stroke-width="4"/>
+      <text x="600" y="535" text-anchor="middle" font-family="Georgia, serif" font-size="56" font-style="italic" fill="#074757">Mary Jean's</text>
+      <text x="600" y="590" text-anchor="middle" font-family="Georgia, serif" font-size="31" letter-spacing="8" fill="#074757">COASTAL CREATIONS</text>
+      <image href="${photoUrl}" x="${photoBox.x}" y="${photoBox.y}" width="${photoBox.width}" height="${photoBox.height}" preserveAspectRatio="xMidYMid meet"/>
+      <text x="600" y="1305" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#073f4b">${description.slice(0, 98)}</text>
+      <text x="210" y="1420" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#073f4b">BEACH-FOUND</text>
+      <text x="210" y="1455" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#073f4b">SHELLS</text>
+      <text x="455" y="1420" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#073f4b">HANDMADE</text>
+      <text x="455" y="1455" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#073f4b">WITH CARE</text>
+      <text x="710" y="1420" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#073f4b">OCEAN</text>
+      <text x="710" y="1455" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#073f4b">INSPIRED</text>
+      <text x="970" y="1420" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#073f4b">PERFECT GIFT</text>
+      <text x="970" y="1455" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#073f4b">FOR HER</text>
+      <path d="M0 1515 C240 1560 470 1470 720 1525 C930 1575 1080 1500 1200 1520 L1200 1600 L0 1600 Z" fill="#9fc8c1"/>
+      <text x="600" y="1560" text-anchor="middle" font-family="Georgia, serif" font-size="38" font-style="italic" fill="#074757">Handmade by Mary Jean</text>
+    </svg>
+  `
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+}
+
+async function fileToCompressedImageDataUrl(file: File) {
+  const source = await fileToDataUrl(file)
+  const image = await loadImage(source)
+  const canvas = document.createElement('canvas')
+  const maxSide = 900
+  const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight))
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Could not prepare the uploaded photo.')
+  context.drawImage(image, 0, 0, canvas.width, canvas.height)
+  return canvas.toDataURL('image/jpeg', 0.76)
+}
+
+function loadImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image()
+    image.addEventListener('load', () => resolve(image))
+    image.addEventListener('error', () => reject(new Error('Could not read the uploaded photo.')))
+    image.src = src
+  })
 }
 
 async function filesToLocalMedia(files: File[]) {

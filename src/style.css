@@ -348,6 +348,11 @@ p {
   object-position: center;
 }
 
+.fit-contain .inventory-image {
+  object-fit: contain;
+  background: #fffdf8;
+}
+
 .product-hover-video {
   position: absolute;
   inset: 0;
@@ -673,6 +678,31 @@ textarea {
   background: rgba(159, 200, 193, 0.14);
   border: 1px dashed rgba(15, 78, 92, 0.35);
   border-radius: 5px;
+}
+
+.ai-card-maker {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  background: rgba(159, 200, 193, 0.12);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.ai-card-maker strong {
+  color: var(--teal-dark);
+  font-size: 1.08rem;
+}
+
+.ai-card-maker span {
+  color: var(--driftwood);
+}
+
+.ai-card-preview img {
+  width: min(100%, 28rem);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 12px 30px rgba(18, 55, 63, 0.1);
 }
 
 .checkout-strip {
