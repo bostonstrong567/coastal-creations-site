@@ -1177,6 +1177,7 @@ function cartItemsMarkup() {
       <div class="cart-line">
         <span>${product.title} x ${qty}</span>
         <strong>${product.price ? money(product.price * qty) : 'Quote'}</strong>
+        <button type="button" data-remove-cart="${id}" aria-label="Remove ${escapeHtml(product.title)} from cart">Remove</button>
       </div>
     `
   }).join('')
@@ -1206,6 +1207,15 @@ function attachEvents() {
 
   document.querySelectorAll<HTMLButtonElement>('[data-open-cart]').forEach((button) => {
     button.addEventListener('click', () => {
+      document.querySelector<HTMLDialogElement>('[data-cart-dialog]')?.showModal()
+    })
+  })
+
+  document.querySelectorAll<HTMLButtonElement>('[data-remove-cart]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const id = Number(button.dataset.removeCart)
+      cart.delete(id)
+      render()
       document.querySelector<HTMLDialogElement>('[data-cart-dialog]')?.showModal()
     })
   })
