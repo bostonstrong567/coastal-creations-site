@@ -1927,7 +1927,7 @@ async function generateListingCard(form: HTMLFormElement) {
   try {
     const cardStyle = String(new FormData(form).get('cardStyle') ?? 'auto')
     const titleSuggestion = listingTitleSuggestion(titleInput.value, file?.name ?? '', cardStyle)
-    const descriptionSuggestion = listingDescriptionSuggestion(titleSuggestion, categorySelect.value)
+    const descriptionSuggestion = listingDescriptionSuggestion(titleSuggestion, categorySelect.value, cardStyle)
     if (!titleInput.value.trim() || titleInput.value === 'Sea Glass Wind Chime') {
       titleInput.value = titleSuggestion
     }
@@ -1972,9 +1972,16 @@ function listingTagline(title: string, style: string) {
   return 'Wear a piece of the ocean.'
 }
 
-function listingDescriptionSuggestion(title: string, category: string) {
+function listingDescriptionSuggestion(title: string, category: string, style: string) {
   const kind = category === 'Earrings' || category === 'Jewelry' ? 'shell earrings' : category.toLowerCase()
-  return `${title} ${kind} handmade by Mary Jean with beach-found treasures, coastal texture, and gift-ready detail.`
+  const styleNotes: Record<string, string> = {
+    angel: 'soft wing detail and a keepsake feel',
+    flipflop: 'a playful beach-day charm',
+    rose: 'romantic coastal color and polished gift styling',
+    treasure: 'tiny tide-washed textures and shore-inspired detail',
+  }
+  const note = styleNotes[style] ?? 'coastal texture and gift-ready detail'
+  return `${title} ${kind} handmade by Mary Jean with beach-found treasures, ${note}.`
 }
 
 function buildListingCardSvg(input: { photoUrl: string; title: string; category: string; tagline: string; description: string; photoSize: string }) {
