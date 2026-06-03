@@ -262,7 +262,7 @@ loadStoredStorefrontTiles()
 
 const categories = [
   { label: 'Wind Chimes', slug: 'wind-chimes', category: 'Wind Chimes' },
-  { label: 'Jewelry', slug: 'jewelry', category: 'Earrings' },
+  { label: 'Jewelry', slug: 'jewelry', category: 'Jewelry' },
   { label: 'Earrings', slug: 'earrings', category: 'Earrings' },
   { label: 'Wreaths', slug: 'wreaths', category: 'Wreaths' },
   { label: 'Christmas Ornaments', slug: 'christmas-ornaments', category: 'Ornaments' },
@@ -430,6 +430,8 @@ function render() {
 
 function storefrontMarkup() {
   return `
+      ${categoryRailMarkup()}
+
       <section class="hero">
         <div class="hero-copy">
           <h1>Handmade by the sea, inspired by nature.</h1>
@@ -447,22 +449,20 @@ function storefrontMarkup() {
         </div>
       </section>
 
-      <section class="category-rail" aria-label="Shop categories">
-        ${categories.map((item) => `
-          <a href="#category-${item.slug}">${item.label}</a>
-        `).join('')}
-        <a href="#custom">Custom Gifts</a>
-      </section>
-
       <section id="shop" class="shop-section">
         <div class="section-heading">
           <div>
-          <h2>Fresh from Mary Jean's table</h2>
-            <p>Small-batch coastal pieces with photos, short videos, availability, shipping, and tax estimates. Choose a category above to shop each collection on its own page.</p>
+            <h2>Shop by category</h2>
+            <p>Choose one section at a time. Earrings shows earrings only, wind chimes shows wind chimes only, and custom gifts opens the request form.</p>
           </div>
         </div>
-        <div class="product-grid">
-          ${products.slice(0, 8).map(productCard).join('')}
+        <div class="category-guide-grid">
+          ${categories.map(categoryGuideCard).join('')}
+          <a class="category-guide-card custom-guide-card" href="#custom">
+            <span>Custom Gifts</span>
+            <strong>Start a custom request</strong>
+            <p>Send an idea, colors, budget, deadline, and inspiration photos.</p>
+          </a>
         </div>
       </section>
 
@@ -513,6 +513,28 @@ function storefrontMarkup() {
   `
 }
 
+function categoryRailMarkup(activeSlug = '') {
+  return `
+    <section class="category-rail" aria-label="Shop categories">
+      ${categories.map((item) => `
+        <a class="${activeSlug === item.slug ? 'active' : ''}" href="#category-${item.slug}">${item.label}</a>
+      `).join('')}
+      <a href="#custom">Custom Gifts</a>
+    </section>
+  `
+}
+
+function categoryGuideCard(category: typeof categories[number]) {
+  const count = products.filter((product) => product.category === category.category).length
+  return `
+    <a class="category-guide-card" href="#category-${category.slug}">
+      <span>${escapeHtml(category.label)}</span>
+      <strong>${count ? `${count} listing${count === 1 ? '' : 's'}` : 'Coming soon'}</strong>
+      <p>${escapeHtml(categoryDescription(category.label))}</p>
+    </a>
+  `
+}
+
 function protectedAdminMarkup() {
   if (!isAdminAuthenticated()) {
     return adminLoginMarkup()
@@ -531,6 +553,7 @@ function categoryPageMarkup(slug: string) {
   const listings = products.filter((product) => product.category === category.category)
 
   return `
+    ${categoryRailMarkup(category.slug)}
     <section class="category-page">
       <div class="category-page-head">
         <div>
@@ -550,8 +573,12 @@ function categoryPageMarkup(slug: string) {
 }
 
 function categoryDescription(label: string) {
-  if (label === 'Earrings' || label === 'Jewelry') {
-    return 'Shell earrings and jewelry listings are kept together here so customers can browse the current real inventory.'
+  if (label === 'Earrings') {
+    return 'Shell earrings only, shown from the current real inventory.'
+  }
+
+  if (label === 'Jewelry') {
+    return 'Necklaces, bracelets, and other coastal jewelry when Mary Jean adds them.'
   }
 
   if (label === 'Wind Chimes') {
@@ -1086,7 +1113,7 @@ function shellVisionMarkup(isPage = false) {
               <button type="button" class="secondary-action" data-copy-shell-result>Copy Link</button>
             </div>
           ` : ''}
-          ${shellVision.qc ? `<p class="qc-note">${escapeHtml(shellVision.qc)}</p>` : ''}
+          ${shellVision.qc ? `<details class="qc-note"><summary>Preview details</summary><p>${escapeHtml(shellVision.qc)}</p></details>` : ''}
           ${shellVision.resultPrompt ? `<details><summary>Generated prompt</summary><p>${escapeHtml(shellVision.resultPrompt)}</p></details>` : ''}
         </div>
       </div>
