@@ -141,6 +141,12 @@ button,
   font-weight: 850;
 }
 
+.admin-add-header-button {
+  color: #fffdf8;
+  background: var(--teal-dark);
+  border-color: var(--teal-dark);
+}
+
 .cart-button {
   display: inline-flex;
   align-items: center;

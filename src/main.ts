@@ -386,6 +386,7 @@ function render() {
           <a href="mailto:${contactEmail}">Contact</a>
         </nav>
         <a class="shell-vision-header" href="#shell-vision">Create with Shell Vision</a>
+        ${adminAuthed ? '<button class="admin-header-button admin-add-header-button" data-admin-add-shortcut>Add Listing</button>' : ''}
         ${adminAuthed
           ? '<button class="admin-header-button" data-admin-logout>Log Out</button>'
           : '<a class="admin-header-button" href="#admin">Admin Login</a>'
@@ -1358,6 +1359,13 @@ function attachEvents() {
       window.location.hash = '#shop'
       render()
     })
+  })
+
+  document.querySelector<HTMLButtonElement>('[data-admin-add-shortcut]')?.addEventListener('click', () => {
+    adminTab = 'add'
+    adminNotice = ''
+    window.location.hash = '#admin'
+    render()
   })
 
   document.querySelectorAll<HTMLButtonElement>('[data-admin-tab]').forEach((button) => {
