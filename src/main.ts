@@ -273,6 +273,7 @@ let adminTab: AdminTab = 'storefront'
 let editingListingId: number | null = null
 let adminNotice = ''
 let backendStateLoaded = false
+let pendingListingPreview: Product | null = null
 const productMediaIndex = new Map<number, number>()
 const pendingListingFiles = new Map<number, File[]>()
 
@@ -721,25 +722,46 @@ function adminAddListingMarkup() {
   return `
     <div class="admin-panel">
       <h3>Add a new listing</h3>
-      <p class="admin-panel-note">Use this form for new wind chimes, earrings, wreaths, ornaments, or gifts. The real save action will connect to the backend later.</p>
-      <div class="admin-form-grid">
-        <label>Title<input value="Sea Glass Wind Chime" /></label>
-        <label>Price<input value="$68.00" /></label>
-        <label>Category<select><option>Wind Chimes</option><option>Earrings</option><option>Wreaths</option><option>Ornaments</option></select></label>
-        <label>Status<select><option>Available</option><option>Sold</option><option>Hidden</option><option>Draft</option></select></label>
-      </div>
-      <label class="admin-description">Description<textarea>Handmade from beach-found shells, sea glass, and driftwood tones.</textarea></label>
-      <div class="admin-upload">
-        <div>
-          <strong>Upload photos or videos</strong>
-          <span>Choose from phone camera roll, preview, then publish.</span>
+      <p class="admin-panel-note">Add the listing details, preview the card, then save it as a draft or publish it to the shop.</p>
+      <form class="admin-edit-form" data-admin-add-form>
+        <div class="admin-form-grid">
+          <label>Title<input name="title" value="Sea Glass Wind Chime" required /></label>
+          <label>Price<input name="price" value="$68.00" placeholder="Example: 34.00" /></label>
+          <label>Category<select name="category"><option>Wind Chimes</option><option>Earrings</option><option>Jewelry</option><option>Wreaths</option><option>Ornaments</option><option>Custom Gifts</option></select></label>
+          <label>Status<select name="status"><option>Available</option><option>Draft</option><option>Sold</option><option>Hidden</option></select></label>
         </div>
-        <input type="file" multiple accept="image/*,video/*" data-upload-preview />
-      </div>
-      <div class="admin-actions">
-        <button>Save Draft</button>
-        <button class="primary-action">Preview & Publish</button>
-      </div>
+        <label class="admin-description">Description<textarea name="description">Handmade from beach-found shells, sea glass, and driftwood tones.</textarea></label>
+        <label>Photo URL<input name="imageUrl" placeholder="Optional hosted image URL" /></label>
+        <label>Video URL<input name="videoUrl" placeholder="Optional hosted video URL" /></label>
+        <label class="admin-description">Gallery URLs<textarea name="galleryUrls" placeholder="Optional extra image or video URLs, one per line"></textarea></label>
+        <div class="admin-upload">
+          <div>
+            <strong>Upload photos or videos</strong>
+            <span>Choose from phone camera roll. Preview first, then save.</span>
+          </div>
+          <input type="file" multiple accept="image/*,video/*" data-upload-preview data-new-listing-media />
+          <div class="upload-preview" data-preview-target>
+            <span>Selected photos and videos will preview here.</span>
+          </div>
+        </div>
+        <div class="admin-actions">
+          <button type="submit" name="action" value="draft">Save Draft</button>
+          <button type="submit" name="action" value="preview" class="primary-action">Preview & Publish</button>
+        </div>
+      </form>
+      <dialog class="cart-dialog listing-preview-dialog" data-listing-preview-dialog>
+        <form method="dialog">
+          <div class="dialog-head">
+            <h2>Listing Preview</h2>
+            <button value="close" aria-label="Close preview">Close</button>
+          </div>
+          <div class="listing-preview-card" data-listing-preview-card></div>
+          <div class="admin-actions">
+            <button value="close">Keep Editing</button>
+            <button type="button" class="primary-action" data-publish-preview-listing>Save & Publish</button>
+          </div>
+        </form>
+      </dialog>
     </div>
   `
 }
@@ -1335,6 +1357,38 @@ function attachEvents() {
     })
   })
 
+  document.querySelector<HTMLFormElement>('[data-admin-add-form]')?.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    const form = event.currentTarget as HTMLFormElement
+    const submitter = (event as SubmitEvent).submitter as HTMLButtonElement | null
+    const action = submitter?.value === 'draft' ? 'draft' : 'preview'
+    const listing = await listingFromAddForm(form)
+
+    if (action === 'draft') {
+      listing.status = 'Draft'
+      await saveNewListing(listing)
+      adminTab = 'listings'
+      adminNotice = `${listing.title} was saved as a draft.`
+      form.reset()
+      render()
+      return
+    }
+
+    pendingListingPreview = { ...listing, status: 'Available' }
+    showListingPreview(pendingListingPreview)
+  })
+
+  document.querySelector<HTMLButtonElement>('[data-publish-preview-listing]')?.addEventListener('click', async () => {
+    if (!pendingListingPreview) return
+    pendingListingPreview.status = 'Available'
+    await saveNewListing(pendingListingPreview)
+    document.querySelector<HTMLDialogElement>('[data-listing-preview-dialog]')?.close()
+    adminTab = 'listings'
+    adminNotice = `${pendingListingPreview.title} was published.`
+    pendingListingPreview = null
+    render()
+  })
+
   document.querySelector<HTMLFormElement>('[data-admin-edit-form]')?.addEventListener('submit', (event) => {
     event.preventDefault()
     const form = event.currentTarget as HTMLFormElement
@@ -1432,6 +1486,61 @@ function isAdminAuthenticated() {
   return sessionStorage.getItem(adminSessionKey) === 'true'
 }
 
+async function listingFromAddForm(form: HTMLFormElement): Promise<Product> {
+  const formData = new FormData(form)
+  const rawPrice = String(formData.get('price') ?? '').replace(/[^0-9.]/g, '')
+  const parsedPrice = rawPrice ? Number(rawPrice) : undefined
+  const files = Array.from(form.querySelector<HTMLInputElement>('[data-new-listing-media]')?.files ?? [])
+  const localMedia = files.length ? await filesToLocalMedia(files) : []
+  const imageFromUpload = localMedia.find((file) => file.fileType.startsWith('image/'))?.url
+  const videoFromUpload = localMedia.find((file) => file.fileType.startsWith('video/'))?.url
+  const galleryUrls = Array.from(new Set([
+    ...parseGalleryUrls(String(formData.get('galleryUrls') ?? '')),
+    ...localMedia.map((file) => file.url),
+  ]))
+  const title = String(formData.get('title') ?? '').trim() || 'New Coastal Listing'
+
+  return {
+    id: nextListingId(),
+    title,
+    category: String(formData.get('category') ?? 'Earrings'),
+    price: parsedPrice && Number.isFinite(parsedPrice) ? parsedPrice : undefined,
+    priceLabel: parsedPrice && Number.isFinite(parsedPrice) ? undefined : 'Price TBD',
+    tag: 'New listing',
+    media: videoFromUpload || String(formData.get('videoUrl') ?? '').trim() ? 'video' : 'photo',
+    imageClass: 'real-inventory',
+    imageUrl: imageFromUpload || String(formData.get('imageUrl') ?? '').trim() || undefined,
+    videoUrl: videoFromUpload || String(formData.get('videoUrl') ?? '').trim() || undefined,
+    galleryUrls,
+    description: String(formData.get('description') ?? '').trim(),
+    status: String(formData.get('status') ?? 'Available') as ListingStatus,
+  }
+}
+
+function nextListingId() {
+  return Math.max(0, ...products.map((product) => product.id)) + 1
+}
+
+async function saveNewListing(listing: Product) {
+  const existingIndex = products.findIndex((product) => product.id === listing.id)
+  if (existingIndex >= 0) {
+    products[existingIndex] = listing
+  } else {
+    products.push(listing)
+  }
+  saveListingEdits()
+  await saveListingToBackend(listing)
+}
+
+function showListingPreview(listing: Product) {
+  const dialog = document.querySelector<HTMLDialogElement>('[data-listing-preview-dialog]')
+  const preview = document.querySelector<HTMLElement>('[data-listing-preview-card]')
+  if (!dialog || !preview) return
+
+  preview.innerHTML = productCard(listing)
+  dialog.showModal()
+}
+
 async function handleAdminLogin(form: HTMLFormElement) {
   const formData = new FormData(form)
   const username = String(formData.get('username') ?? '').trim()
@@ -1472,19 +1581,33 @@ function loadStoredListingEdits() {
 function applyListingEdits(edits: StoredProductEdit[]) {
   edits.forEach((edit) => {
     if (typeof edit.id !== 'number') return
-    const product = products.find((item) => item.id === edit.id)
-    if (!product) return
+    let product = products.find((item) => item.id === edit.id)
+    if (!product) {
+      product = {
+        id: edit.id,
+        title: typeof edit.title === 'string' ? edit.title : 'Untitled Listing',
+        category: typeof edit.category === 'string' ? edit.category : 'Earrings',
+        tag: typeof edit.tag === 'string' ? edit.tag : 'New listing',
+        media: edit.media === 'video' ? 'video' : 'photo',
+        imageClass: typeof edit.imageClass === 'string' ? edit.imageClass : 'real-inventory',
+        status: 'Available',
+      }
+      products.push(product)
+    }
 
     if (typeof edit.title === 'string') product.title = edit.title
     if (typeof edit.category === 'string') product.category = edit.category
     if (typeof edit.price === 'number') product.price = edit.price
     if (edit.price === null) product.price = undefined
-      if (typeof edit.priceLabel === 'string') product.priceLabel = edit.priceLabel
-      if (typeof edit.imageUrl === 'string') product.imageUrl = edit.imageUrl || undefined
-      if (typeof edit.videoUrl === 'string') product.videoUrl = edit.videoUrl || undefined
-      if (Array.isArray(edit.galleryUrls)) product.galleryUrls = edit.galleryUrls.filter((url): url is string => typeof url === 'string' && Boolean(url.trim()))
-      if (typeof edit.description === 'string') product.description = edit.description
-      if (typeof edit.status === 'string') product.status = edit.status as ListingStatus
+    if (typeof edit.priceLabel === 'string') product.priceLabel = edit.priceLabel
+    if (typeof edit.tag === 'string') product.tag = edit.tag
+    if (edit.media === 'photo' || edit.media === 'video') product.media = edit.media
+    if (typeof edit.imageClass === 'string') product.imageClass = edit.imageClass
+    if (typeof edit.imageUrl === 'string') product.imageUrl = edit.imageUrl || undefined
+    if (typeof edit.videoUrl === 'string') product.videoUrl = edit.videoUrl || undefined
+    if (Array.isArray(edit.galleryUrls)) product.galleryUrls = edit.galleryUrls.filter((url): url is string => typeof url === 'string' && Boolean(url.trim()))
+    if (typeof edit.description === 'string') product.description = edit.description
+    if (typeof edit.status === 'string') product.status = edit.status as ListingStatus
   })
 }
 
@@ -1495,6 +1618,9 @@ function saveListingEdits() {
     category: product.category,
     price: product.price ?? null,
     priceLabel: product.priceLabel,
+    tag: product.tag,
+    media: product.media,
+    imageClass: product.imageClass,
     imageUrl: product.imageUrl,
     videoUrl: product.videoUrl,
     galleryUrls: product.galleryUrls ?? [],

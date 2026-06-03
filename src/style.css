@@ -1396,6 +1396,10 @@ textarea {
   background: transparent;
 }
 
+.listing-preview-dialog {
+  width: min(92vw, 34rem);
+}
+
 .cart-dialog::backdrop {
   background: rgba(7, 56, 66, 0.42);
 }
@@ -1404,6 +1408,15 @@ textarea {
   display: grid;
   gap: 1rem;
   padding: 1.25rem;
+}
+
+.listing-preview-card {
+  display: grid;
+  justify-items: stretch;
+}
+
+.listing-preview-card .product-card {
+  box-shadow: none;
 }
 
 .dialog-head,
