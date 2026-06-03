@@ -2041,18 +2041,17 @@ function buildListingCardSvg(input: { photoUrl: string; title: string; category:
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
 }
 
-async function fileToCompressedImageDataUrl(file: File) {
+async function fileToCompressedImageDataUrl(file: File, maxSide = 640, quality = 0.68) {
   const source = await fileToDataUrl(file)
   const image = await loadImage(source)
   const canvas = document.createElement('canvas')
-  const maxSide = 900
   const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight))
   canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
   canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
   const context = canvas.getContext('2d')
   if (!context) throw new Error('Could not prepare the uploaded photo.')
   context.drawImage(image, 0, 0, canvas.width, canvas.height)
-  return canvas.toDataURL('image/jpeg', 0.76)
+  return canvas.toDataURL('image/jpeg', quality)
 }
 
 function loadImage(src: string) {
@@ -2066,8 +2065,10 @@ function loadImage(src: string) {
 
 async function filesToLocalMedia(files: File[]) {
   return Promise.all(files.slice(0, 8).map(async (file) => ({
-    url: await fileToDataUrl(file),
-    fileType: file.type || 'application/octet-stream',
+    url: file.type.startsWith('image/')
+      ? await fileToCompressedImageDataUrl(file)
+      : await fileToDataUrl(file),
+    fileType: file.type.startsWith('image/') ? 'image/jpeg' : file.type || 'application/octet-stream',
   })))
 }
 
@@ -2088,10 +2089,11 @@ function parseGalleryUrls(value: string) {
 }
 
 async function uploadListingFiles(listingId: string, files: File[]) {
+  const preparedFiles = await prepareListingUploadFiles(files)
   const formData = new FormData()
   formData.set('ownerType', 'listing')
   formData.set('ownerId', listingId)
-  files.forEach((file) => formData.append('files', file))
+  preparedFiles.forEach((file) => formData.append('files', file))
 
   try {
     const response = await fetch(`${siteApi}/uploads`, {
@@ -2105,6 +2107,17 @@ async function uploadListingFiles(listingId: string, files: File[]) {
   } catch {
     return { ok: false, files: [] }
   }
+}
+
+async function prepareListingUploadFiles(files: File[]) {
+  return Promise.all(files.slice(0, 8).map(async (file) => {
+    if (!file.type.startsWith('image/')) return file
+
+    const dataUrl = await fileToCompressedImageDataUrl(file)
+    const blob = await (await fetch(dataUrl)).blob()
+    const baseName = file.name.replace(/\.[^.]+$/, '') || 'listing-photo'
+    return new File([blob], `${baseName}-small.jpg`, { type: 'image/jpeg' })
+  }))
 }
 
 async function saveStorefrontTileToBackend(tile: StorefrontTile) {
