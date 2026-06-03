@@ -1863,8 +1863,15 @@ async function generateShellVision() {
     })
 
     if (!response.ok) {
+      const errorText = await response.text()
+      let errorMessage = ''
+      try {
+        errorMessage = (JSON.parse(errorText) as { error?: string }).error ?? ''
+      } catch {
+        errorMessage = errorText
+      }
       if (response.status === 429) throw new Error('Shell Vision is busy. Please wait a bit and try again.')
-      throw new Error(`Generation failed: ${response.status}`)
+      throw new Error(errorMessage || `Generation failed: ${response.status}`)
     }
 
     const data = await response.json() as {
