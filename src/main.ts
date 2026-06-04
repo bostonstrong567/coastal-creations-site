@@ -737,7 +737,12 @@ function adminAddListingMarkup() {
             </div>
           </div>
           <div class="admin-upload simple-upload">
-            <input type="file" multiple accept="image/*,video/*" data-upload-preview data-new-listing-media />
+            <label class="camera-upload-button">Take Photo
+              <input type="file" accept="image/*" capture="environment" data-upload-preview data-new-listing-media />
+            </label>
+            <label class="camera-upload-button">Choose Photos or Video
+              <input type="file" multiple accept="image/*,video/*" data-upload-preview data-new-listing-media />
+            </label>
             <div class="upload-preview media-preview-grid" data-preview-target>
               <span>Selected photos and videos will preview here.</span>
             </div>
@@ -1587,7 +1592,7 @@ async function listingFromAddForm(form: HTMLFormElement): Promise<Product> {
   const formData = new FormData(form)
   const rawPrice = String(formData.get('price') ?? '').replace(/[^0-9.]/g, '')
   const parsedPrice = rawPrice ? Number(rawPrice) : undefined
-  const files = Array.from(form.querySelector<HTMLInputElement>('[data-new-listing-media]')?.files ?? [])
+  const files = newListingFiles(form)
   const localMedia = files.length ? await filesToLocalMedia(files) : []
   const imageFromUpload = localMedia.find((file) => file.fileType.startsWith('image/'))?.url
   const videoFromUpload = localMedia.find((file) => file.fileType.startsWith('video/'))?.url
@@ -1637,6 +1642,11 @@ function showListingPreview(listing: Product) {
 
   preview.innerHTML = productCard(listing)
   dialog.showModal()
+}
+
+function newListingFiles(form: HTMLFormElement) {
+  return Array.from(form.querySelectorAll<HTMLInputElement>('[data-new-listing-media]'))
+    .flatMap((input) => Array.from(input.files ?? []))
 }
 
 async function submitCartOrder(form: HTMLFormElement) {
@@ -1961,7 +1971,7 @@ async function generateListingCard(form: HTMLFormElement) {
   const titleInput = form.querySelector<HTMLInputElement>('input[name="title"]')
   const descriptionInput = form.querySelector<HTMLTextAreaElement>('textarea[name="description"]')
   const categorySelect = form.querySelector<HTMLSelectElement>('select[name="category"]')
-  const file = Array.from(form.querySelector<HTMLInputElement>('[data-new-listing-media]')?.files ?? [])
+  const file = newListingFiles(form)
     .find((item) => item.type.startsWith('image/'))
 
   if (!preview || !hiddenInput || !titleInput || !descriptionInput || !categorySelect) return
@@ -2082,16 +2092,20 @@ function buildListingCardSvg(input: { photoUrl: string; title: string; category:
 }
 
 async function fileToCompressedImageDataUrl(file: File, maxSide = 640, quality = 0.68) {
-  const source = await fileToDataUrl(file)
-  const image = await loadImage(source)
-  const canvas = document.createElement('canvas')
-  const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight))
-  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
-  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
-  const context = canvas.getContext('2d')
-  if (!context) throw new Error('Could not prepare the uploaded photo.')
-  context.drawImage(image, 0, 0, canvas.width, canvas.height)
-  return canvas.toDataURL('image/jpeg', quality)
+  const source = URL.createObjectURL(file)
+  try {
+    const image = await loadImage(source)
+    const canvas = document.createElement('canvas')
+    const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight))
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Could not prepare the uploaded photo.')
+    context.drawImage(image, 0, 0, canvas.width, canvas.height)
+    return canvas.toDataURL('image/jpeg', quality)
+  } finally {
+    URL.revokeObjectURL(source)
+  }
 }
 
 function loadImage(src: string) {

@@ -1421,8 +1421,30 @@ textarea {
 }
 
 .simple-upload {
-  grid-template-columns: minmax(12rem, 0.55fr) 1fr;
+  grid-template-columns: repeat(2, minmax(10rem, 0.35fr)) 1fr;
   margin-top: 0;
+}
+
+.camera-upload-button {
+  display: grid;
+  place-items: center;
+  min-height: 3.4rem;
+  padding: 0.75rem;
+  color: #fffdf8;
+  background: var(--teal);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 7px;
+  font-weight: 900;
+  text-align: center;
+  cursor: pointer;
+}
+
+.camera-upload-button input {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .admin-upload span {
@@ -1835,6 +1857,14 @@ textarea {
     width: 100%;
     min-height: 3.1rem;
     justify-content: center;
+  }
+
+  .simple-upload {
+    grid-template-columns: 1fr;
+  }
+
+  .camera-upload-button {
+    width: 100%;
   }
 
   .two-column-fields,
