@@ -694,11 +694,42 @@ textarea {
   display: grid;
   gap: 0.45rem;
   min-height: 4.5rem;
+  max-width: 100%;
+  overflow: hidden;
   padding: 0.9rem;
   color: var(--driftwood);
   background: rgba(159, 200, 193, 0.14);
   border: 1px dashed rgba(15, 78, 92, 0.35);
   border-radius: 5px;
+}
+
+.upload-preview figure {
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.upload-preview img,
+.upload-preview video {
+  display: block;
+  width: 100%;
+  max-width: 10rem;
+  height: auto;
+  max-height: 8rem;
+  object-fit: cover;
+  background: #f8f2e8;
+}
+
+.upload-preview figcaption {
+  overflow-wrap: anywhere;
+  padding: 0.55rem;
+  color: var(--teal-dark);
+  font-size: 0.8rem;
+  font-weight: 750;
 }
 
 .ai-card-maker {

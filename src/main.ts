@@ -738,7 +738,7 @@ function adminAddListingMarkup() {
           </div>
           <div class="admin-upload simple-upload">
             <input type="file" multiple accept="image/*,video/*" data-upload-preview data-new-listing-media />
-            <div class="upload-preview" data-preview-target>
+            <div class="upload-preview media-preview-grid" data-preview-target>
               <span>Selected photos and videos will preview here.</span>
             </div>
           </div>
