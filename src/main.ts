@@ -2,7 +2,6 @@ import './style.css'
 import bannerLogoUrl from './assets/banner-logo.png'
 import productGridUrl from './assets/product-grid.png'
 
-const contactEmail = 'mjcoastalcreations@gmail.com'
 const chimeApi = '/chime-api'
 const siteApi = '/api'
 const adminUsername = 'mjbussey'
@@ -272,6 +271,7 @@ let adminLoginError = ''
 let adminTab: AdminTab = 'storefront'
 let editingListingId: number | null = null
 let adminNotice = ''
+let customerNotice = ''
 let backendStateLoaded = false
 let pendingListingPreview: Product | null = null
 const productMediaIndex = new Map<number, number>()
@@ -383,7 +383,7 @@ function render() {
           <a href="#shop">Shop</a>
           <a href="#custom">Custom Gifts</a>
           ${adminAuthed ? '<a href="#admin">Admin</a>' : ''}
-          <a href="mailto:${contactEmail}">Contact</a>
+          <a href="#custom">Contact</a>
         </nav>
         <a class="shell-vision-header" href="#shell-vision">Create with Shell Vision</a>
         ${adminAuthed ? '<button class="admin-header-button admin-add-header-button" data-admin-add-shortcut>Add Listing</button>' : ''}
@@ -399,6 +399,7 @@ function render() {
     </header>
 
     <main id="top">
+      ${customerNotice ? `<div class="customer-notice">${escapeHtml(customerNotice)}</div>` : ''}
       ${isShellVisionPage
         ? shellVisionMarkup(true)
         : isAdminPage
@@ -422,7 +423,6 @@ function render() {
           <label>Shipping ZIP for tax estimate<input value="02539" /></label>
         </div>
         <button class="primary-action full" value="confirm">Submit Order Request</button>
-        <a class="email-link" href="mailto:${contactEmail}?subject=Mary%20Jean%20Order%20Request">Email order request to ${contactEmail}</a>
       </form>
     </dialog>
   `
@@ -508,7 +508,6 @@ function storefrontMarkup() {
             <span>Photo and video previews will appear here.</span>
           </div>
           <button type="submit" class="primary-action full">Send Custom Request</button>
-          <a class="email-link" href="mailto:${contactEmail}?subject=Custom%20Gift%20Request">Email ${contactEmail}</a>
         </form>
       </section>
 
@@ -727,19 +726,31 @@ function adminAddListingMarkup() {
   return `
     <div class="admin-panel">
       <h3>Add a new listing</h3>
-      <p class="admin-panel-note">Add the listing details, preview the card, then save it as a draft or publish it to the shop.</p>
+      <p class="admin-panel-note">Start with a photo, create the product card, then add the basic details. Keep it simple and publish when it looks right.</p>
       <form class="admin-edit-form" data-admin-add-form>
-        <div class="admin-form-grid">
-          <label>Title<input name="title" value="Sea Glass Wind Chime" required /></label>
-          <label>Price<input name="price" value="$68.00" placeholder="Example: 34.00" /></label>
-          <label>Category<select name="category"><option>Wind Chimes</option><option>Earrings</option><option>Jewelry</option><option>Wreaths</option><option>Ornaments</option><option>Custom Gifts</option></select></label>
-          <label>Status<select name="status"><option>Available</option><option>Draft</option><option>Sold</option><option>Hidden</option></select></label>
-        </div>
-        <label class="admin-description">Description<textarea name="description">Handmade from beach-found shells, sea glass, and driftwood tones.</textarea></label>
-        <div class="ai-card-maker">
-          <div>
-            <strong>AI Listing Card Maker</strong>
-            <span>Upload the original photo, choose a card style, then make a polished Mary Jean product card.</span>
+        <section class="admin-step">
+          <div class="admin-step-head">
+            <span>1</span>
+            <div>
+              <strong>Add product photos or a short video</strong>
+              <small>Choose from the phone camera roll. Photos are made smaller automatically.</small>
+            </div>
+          </div>
+          <div class="admin-upload simple-upload">
+            <input type="file" multiple accept="image/*,video/*" data-upload-preview data-new-listing-media />
+            <div class="upload-preview" data-preview-target>
+              <span>Selected photos and videos will preview here.</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="admin-step ai-card-maker">
+          <div class="admin-step-head">
+            <span>2</span>
+            <div>
+              <strong>Create the product card</strong>
+              <small>This makes the pretty Mary Jean card from the photo above.</small>
+            </div>
           </div>
           <div class="admin-form-grid">
             <label>Card style<select name="cardStyle">
@@ -759,27 +770,35 @@ function adminAddListingMarkup() {
               <option value="xlarge">Extra large</option>
             </select></label>
           </div>
-          <button type="button" class="secondary-action" data-generate-listing-card>Create AI Listing Card</button>
+          <button type="button" class="secondary-action" data-generate-listing-card>Create Product Card</button>
           <input type="hidden" name="generatedCardUrl" />
           <div class="upload-preview ai-card-preview" data-ai-card-preview>
-            <span>Generated card preview will appear here.</span>
+            <span>The product card will appear here.</span>
           </div>
+        </section>
+
+        <section class="admin-step">
+          <div class="admin-step-head">
+            <span>3</span>
+            <div>
+              <strong>Add the listing details</strong>
+              <small>Only the title, category, and price are needed. The description can be adjusted later.</small>
+            </div>
+          </div>
+        <div class="admin-form-grid">
+          <label>Title<input name="title" value="Sea Glass Wind Chime" required /></label>
+          <label>Price<input name="price" value="$68.00" placeholder="Example: 34.00" /></label>
+          <label>Category<select name="category"><option>Wind Chimes</option><option>Earrings</option><option>Jewelry</option><option>Wreaths</option><option>Ornaments</option><option>Custom Gifts</option></select></label>
+          <input type="hidden" name="status" value="Available" />
         </div>
-        <label>Photo URL<input name="imageUrl" placeholder="Optional hosted image URL" /></label>
-        <label>Video URL<input name="videoUrl" placeholder="Optional hosted video URL" /></label>
-        <label class="admin-description">Gallery URLs<textarea name="galleryUrls" placeholder="Optional extra image or video URLs, one per line"></textarea></label>
-        <div class="admin-upload">
-          <div>
-            <strong>Upload photos or videos</strong>
-            <span>Choose from phone camera roll. Preview first, then save.</span>
-          </div>
-          <input type="file" multiple accept="image/*,video/*" data-upload-preview data-new-listing-media />
-          <div class="upload-preview" data-preview-target>
-            <span>Selected photos and videos will preview here.</span>
-          </div>
-        </div>
+        <label class="admin-description">Description<textarea name="description">Handmade from beach-found shells, sea glass, and driftwood tones.</textarea></label>
+        </section>
+        <input name="imageUrl" type="hidden" />
+        <input name="videoUrl" type="hidden" />
+        <textarea name="galleryUrls" hidden></textarea>
         <div class="admin-actions">
-          <button type="submit" name="action" value="draft">Save Draft</button>
+          <button type="submit" name="action" value="save">Save</button>
+          <button type="submit" name="action" value="draft">Save for Later</button>
           <button type="submit" name="action" value="preview" class="primary-action">Preview & Publish</button>
         </div>
       </form>
@@ -792,7 +811,7 @@ function adminAddListingMarkup() {
           <div class="listing-preview-card" data-listing-preview-card></div>
           <div class="admin-actions">
             <button value="close">Keep Editing</button>
-            <button type="button" class="primary-action" data-publish-preview-listing>Save & Publish</button>
+            <button type="button" class="primary-action" data-publish-preview-listing>Publish Listing</button>
           </div>
         </form>
       </dialog>
@@ -1429,7 +1448,7 @@ function attachEvents() {
     event.preventDefault()
     const form = event.currentTarget as HTMLFormElement
     const submitter = (event as SubmitEvent).submitter as HTMLButtonElement | null
-    const action = submitter?.value === 'draft' ? 'draft' : 'preview'
+    const action = submitter?.value === 'draft' ? 'draft' : submitter?.value === 'save' ? 'save' : 'preview'
     const listing = await listingFromAddForm(form)
 
     if (action === 'draft') {
@@ -1437,6 +1456,15 @@ function attachEvents() {
       await saveNewListing(listing)
       adminTab = 'listings'
       adminNotice = `${listing.title} was saved as a draft.`
+      form.reset()
+      render()
+      return
+    }
+
+    if (action === 'save') {
+      await saveNewListing(listing)
+      adminTab = 'listings'
+      adminNotice = `${listing.title} was saved.`
       form.reset()
       render()
       return
@@ -1630,8 +1658,7 @@ async function submitCartOrder(form: HTMLFormElement) {
   const lines = orderedItems.map(({ product, qty }) => (
     `${product.title} x ${qty} - ${product.price ? money(product.price * qty) : 'Quote needed'}`
   ))
-  const subject = encodeURIComponent('Mary Jean Order Request')
-  const body = encodeURIComponent([
+  const message = [
     'New order request:',
     '',
     ...lines,
@@ -1641,11 +1668,24 @@ async function submitCartOrder(form: HTMLFormElement) {
     `Subtotal: ${money(cartSubtotal())}`,
     '',
     'Inventory note: selected listing(s) were marked Sold in admin.',
-  ].join('\n'))
+  ].join('\n')
+
+  await fetch(`${siteApi}/customer-requests`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      name: email,
+      email,
+      requestType: 'Order Request',
+      message,
+      budget: money(cartSubtotal()),
+      neededBy: zip ? `Ship to ZIP ${zip}` : '',
+    }),
+  }).catch(() => undefined)
 
   cart.clear()
+  customerNotice = 'Message sent.'
   render()
-  window.location.href = `mailto:${contactEmail}?subject=${subject}&body=${body}`
 }
 
 async function handleAdminLogin(form: HTMLFormElement) {
@@ -2163,11 +2203,11 @@ async function submitCustomRequest(form: HTMLFormElement) {
       }),
     })))
 
-    form.querySelector('[data-preview-target]')!.innerHTML = '<span>Request saved. Mary Jean will receive it in the admin database.</span>'
+    customerNotice = 'Message sent.'
+    form.reset()
+    form.querySelector('[data-preview-target]')!.innerHTML = '<span>Message sent.</span>'
   } catch {
-    const subject = encodeURIComponent(`Custom Gift Request from ${payload.name || 'customer'}`)
-    const body = encodeURIComponent(`${payload.message}\n\nEmail: ${payload.email}\nType: ${payload.requestType}`)
-    window.location.href = `mailto:${contactEmail}?subject=${subject}&body=${body}`
+    form.querySelector('[data-preview-target]')!.innerHTML = '<span>Message could not be sent. Please try again.</span>'
   }
 }
 
