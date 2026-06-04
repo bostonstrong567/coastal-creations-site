@@ -1,6 +1,7 @@
 import './style.css'
 import bannerLogoUrl from './assets/banner-logo.png'
 import productGridUrl from './assets/product-grid.png'
+import smallCardTemplateUrl from './assets/small-card-template.png'
 
 const chimeApi = '/chime-api'
 const siteApi = '/api'
@@ -758,21 +759,9 @@ function adminAddListingMarkup() {
             </div>
           </div>
           <div class="admin-form-grid">
-            <label>Card style<select name="cardStyle">
-              <option value="auto">Auto beach card</option>
-              <option value="angel">Angel Wings</option>
-              <option value="flipflop">Flip Flop</option>
-              <option value="rose">Coastal Rose</option>
-              <option value="treasure">Shell Treasures</option>
-            </select></label>
             <label>Photo fit<select name="imageFit">
+              <option value="fit-contain" selected>Show whole photo</option>
               <option value="fit-cover">Fill card</option>
-              <option value="fit-contain">Show whole photo</option>
-            </select></label>
-            <label>Product photo size<select name="cardPhotoSize">
-              <option value="medium">Medium</option>
-              <option value="large" selected>Large</option>
-              <option value="xlarge">Extra large</option>
             </select></label>
           </div>
           <button type="button" class="secondary-action" data-generate-listing-card>Create Product Card</button>
@@ -1983,9 +1972,9 @@ async function generateListingCard(form: HTMLFormElement) {
   preview.innerHTML = '<span>Creating branded listing card...</span>'
 
   try {
-    const cardStyle = String(new FormData(form).get('cardStyle') ?? 'auto')
-    const titleSuggestion = listingTitleSuggestion(titleInput.value, file?.name ?? '', cardStyle)
-    const descriptionSuggestion = listingDescriptionSuggestion(titleSuggestion, categorySelect.value, cardStyle)
+    const imageFit = String(new FormData(form).get('imageFit') ?? 'fit-contain')
+    const titleSuggestion = listingTitleSuggestion(titleInput.value, file?.name ?? '', 'auto')
+    const descriptionSuggestion = listingDescriptionSuggestion(titleSuggestion, categorySelect.value, 'auto')
     if (!titleInput.value.trim() || titleInput.value === 'Sea Glass Wind Chime') {
       titleInput.value = titleSuggestion
     }
@@ -1993,14 +1982,11 @@ async function generateListingCard(form: HTMLFormElement) {
       descriptionInput.value = descriptionSuggestion
     }
 
-    const compressedPhoto = file ? await fileToCompressedImageDataUrl(file) : imageUrlInput?.value.trim() ?? ''
-    const cardUrl = buildListingCardSvg({
+    const compressedPhoto = file ? await fileToCompressedImageDataUrl(file, 900, 0.78) : imageUrlInput?.value.trim() ?? ''
+    const cardUrl = await buildSmallTemplateListingCard({
       photoUrl: compressedPhoto,
       title: titleInput.value,
-      category: categorySelect.value,
-      tagline: listingTagline(titleInput.value, cardStyle),
-      description: descriptionInput.value,
-      photoSize: String(new FormData(form).get('cardPhotoSize') ?? 'large'),
+      fit: imageFit === 'fit-cover' ? 'cover' : 'contain',
     })
 
     hiddenInput.value = cardUrl
@@ -2021,15 +2007,6 @@ function listingTitleSuggestion(currentTitle: string, fileName: string, style: s
   return currentTitle.trim() && currentTitle !== 'Sea Glass Wind Chime' ? currentTitle.trim() : 'Shell Earrings'
 }
 
-function listingTagline(title: string, style: string) {
-  const text = `${title} ${style}`.toLowerCase()
-  if (text.includes('angel') || text.includes('wing')) return 'Wings of the sea.'
-  if (text.includes('flip')) return 'Simple days. Salty vibes.'
-  if (text.includes('rose')) return 'Wear a piece of the ocean.'
-  if (text.includes('treasure')) return 'Treasures from the tides.'
-  return 'Wear a piece of the ocean.'
-}
-
 function listingDescriptionSuggestion(title: string, category: string, style: string) {
   const kind = category === 'Earrings' || category === 'Jewelry' ? 'shell earrings' : category.toLowerCase()
   const styleNotes: Record<string, string> = {
@@ -2042,53 +2019,123 @@ function listingDescriptionSuggestion(title: string, category: string, style: st
   return `${title} ${kind} handmade by Mary Jean with beach-found treasures, ${note}.`
 }
 
-function buildListingCardSvg(input: { photoUrl: string; title: string; category: string; tagline: string; description: string; photoSize: string }) {
-  const categoryLabel = input.category === 'Earrings' || input.category === 'Jewelry' ? 'Shell Earrings' : input.category
-  const title = escapeHtml(input.title).toUpperCase()
-  const tagline = escapeHtml(input.tagline)
-  const description = escapeHtml(input.description)
-  const photoUrl = input.photoUrl
-  const photoBox = input.photoSize === 'xlarge'
-    ? { x: 255, y: 615, width: 690, height: 610 }
-    : input.photoSize === 'medium'
-      ? { x: 350, y: 690, width: 500, height: 420 }
-      : { x: 305, y: 650, width: 590, height: 520 }
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1600" viewBox="0 0 1200 1600">
-      <defs>
-        <linearGradient id="sky" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0" stop-color="#eaf7fb"/>
-          <stop offset="0.42" stop-color="#fffdf8"/>
-          <stop offset="1" stop-color="#f5e2c8"/>
-        </linearGradient>
-      </defs>
-      <rect width="1200" height="1600" fill="url(#sky)"/>
-      <circle cx="205" cy="170" r="130" fill="#fffdf8" stroke="#caa56a" stroke-width="10"/>
-      <text x="205" y="145" text-anchor="middle" font-family="Georgia, serif" font-size="42" font-style="italic" fill="#074757">Mary Jean's</text>
-      <text x="205" y="200" text-anchor="middle" font-family="Georgia, serif" font-size="34" letter-spacing="7" fill="#074757">COASTAL</text>
-      <text x="205" y="240" text-anchor="middle" font-family="Georgia, serif" font-size="23" letter-spacing="6" fill="#074757">CREATIONS</text>
-      <text x="780" y="150" text-anchor="middle" font-family="Georgia, serif" font-size="58" font-weight="700" letter-spacing="5" fill="#073f4b">${title}</text>
-      <text x="780" y="210" text-anchor="middle" font-family="Georgia, serif" font-size="34" letter-spacing="12" fill="#073f4b">${escapeHtml(categoryLabel).toUpperCase()}</text>
-      <text x="780" y="285" text-anchor="middle" font-family="Georgia, serif" font-size="38" font-style="italic" fill="#0f6f7c">${tagline}</text>
-      <text x="780" y="335" text-anchor="middle" font-family="Georgia, serif" font-size="29" fill="#073f4b">Handmade with beach-found treasures.</text>
-      <rect x="255" y="455" width="690" height="780" rx="34" fill="#f7eddf" stroke="#e6d8bf" stroke-width="4"/>
-      <text x="600" y="535" text-anchor="middle" font-family="Georgia, serif" font-size="56" font-style="italic" fill="#074757">Mary Jean's</text>
-      <text x="600" y="590" text-anchor="middle" font-family="Georgia, serif" font-size="31" letter-spacing="8" fill="#074757">COASTAL CREATIONS</text>
-      <image href="${photoUrl}" x="${photoBox.x}" y="${photoBox.y}" width="${photoBox.width}" height="${photoBox.height}" preserveAspectRatio="xMidYMid meet"/>
-      <text x="600" y="1305" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#073f4b">${description.slice(0, 98)}</text>
-      <text x="210" y="1420" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#073f4b">BEACH-FOUND</text>
-      <text x="210" y="1455" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#073f4b">SHELLS</text>
-      <text x="455" y="1420" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#073f4b">HANDMADE</text>
-      <text x="455" y="1455" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#073f4b">WITH CARE</text>
-      <text x="710" y="1420" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#073f4b">OCEAN</text>
-      <text x="710" y="1455" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#073f4b">INSPIRED</text>
-      <text x="970" y="1420" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#073f4b">PERFECT GIFT</text>
-      <text x="970" y="1455" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#073f4b">FOR HER</text>
-      <path d="M0 1515 C240 1560 470 1470 720 1525 C930 1575 1080 1500 1200 1520 L1200 1600 L0 1600 Z" fill="#9fc8c1"/>
-      <text x="600" y="1560" text-anchor="middle" font-family="Georgia, serif" font-size="38" font-style="italic" fill="#074757">Handmade by Mary Jean</text>
-    </svg>
-  `
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+async function buildSmallTemplateListingCard(input: { photoUrl: string; title: string; fit: 'cover' | 'contain' }) {
+  const [template, productPhoto] = await Promise.all([
+    loadImage(smallCardTemplateUrl),
+    loadImage(input.photoUrl),
+  ])
+  const canvas = document.createElement('canvas')
+  canvas.width = template.naturalWidth
+  canvas.height = template.naturalHeight
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Could not prepare the product card.')
+
+  context.drawImage(template, 0, 0, canvas.width, canvas.height)
+
+  const w = canvas.width
+  const h = canvas.height
+  const photoBox = {
+    x: w * 0.29,
+    y: h * 0.34,
+    width: w * 0.54,
+    height: h * 0.39,
+  }
+
+  context.save()
+  context.shadowColor = 'rgba(18, 55, 63, 0.16)'
+  context.shadowBlur = w * 0.02
+  context.shadowOffsetY = h * 0.008
+  roundedRect(context, photoBox.x, photoBox.y, photoBox.width, photoBox.height, w * 0.025)
+  context.fillStyle = 'rgba(255, 253, 248, 0.9)'
+  context.fill()
+  context.restore()
+
+  context.save()
+  roundedRect(context, photoBox.x, photoBox.y, photoBox.width, photoBox.height, w * 0.025)
+  context.clip()
+  drawImageInBox(context, productPhoto, photoBox, input.fit)
+  context.restore()
+
+  context.save()
+  context.strokeStyle = 'rgba(198, 165, 106, 0.55)'
+  context.lineWidth = Math.max(2, w * 0.002)
+  roundedRect(context, photoBox.x, photoBox.y, photoBox.width, photoBox.height, w * 0.025)
+  context.stroke()
+  context.restore()
+
+  const title = input.title.trim() || 'Shell Earrings'
+  context.fillStyle = '#073f4b'
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  drawWrappedText(context, title.toUpperCase(), w * 0.70, h * 0.135, w * 0.40, Math.round(w * 0.047), Math.round(w * 0.056), 'Georgia, serif', 2)
+
+  return canvas.toDataURL('image/jpeg', 0.84)
+}
+
+function drawImageInBox(
+  context: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  box: { x: number; y: number; width: number; height: number },
+  fit: 'cover' | 'contain',
+) {
+  const imageRatio = image.naturalWidth / image.naturalHeight
+  const boxRatio = box.width / box.height
+  const scale = fit === 'cover'
+    ? (imageRatio > boxRatio ? box.height / image.naturalHeight : box.width / image.naturalWidth)
+    : (imageRatio > boxRatio ? box.width / image.naturalWidth : box.height / image.naturalHeight)
+  const width = image.naturalWidth * scale
+  const height = image.naturalHeight * scale
+  const x = box.x + (box.width - width) / 2
+  const y = box.y + (box.height - height) / 2
+  context.drawImage(image, x, y, width, height)
+}
+
+function roundedRect(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+  context.beginPath()
+  context.moveTo(x + radius, y)
+  context.lineTo(x + width - radius, y)
+  context.quadraticCurveTo(x + width, y, x + width, y + radius)
+  context.lineTo(x + width, y + height - radius)
+  context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height)
+  context.lineTo(x + radius, y + height)
+  context.quadraticCurveTo(x, y + height, x, y + height - radius)
+  context.lineTo(x, y + radius)
+  context.quadraticCurveTo(x, y, x + radius, y)
+  context.closePath()
+}
+
+function drawWrappedText(
+  context: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  fontSize: number,
+  lineHeight: number,
+  fontFamily: string,
+  maxLines: number,
+) {
+  const words = text.split(/\s+/).filter(Boolean)
+  const lines: string[] = []
+  let line = ''
+  context.font = `700 ${fontSize}px ${fontFamily}`
+
+  words.forEach((word) => {
+    const next = line ? `${line} ${word}` : word
+    if (context.measureText(next).width > maxWidth && line) {
+      lines.push(line)
+      line = word
+    } else {
+      line = next
+    }
+  })
+  if (line) lines.push(line)
+
+  const visibleLines = lines.slice(0, maxLines)
+  const startY = y - ((visibleLines.length - 1) * lineHeight) / 2
+  visibleLines.forEach((visibleLine, index) => {
+    context.fillText(visibleLine, x, startY + index * lineHeight)
+  })
 }
 
 async function fileToCompressedImageDataUrl(file: File, maxSide = 640, quality = 0.68) {
